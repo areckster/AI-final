@@ -113,7 +113,6 @@
     }
     /* Hide copy action while streaming */
     .msg.streaming .bubble-actions{display:none !important}
-    .msg.streaming .body{user-select:none}
 
     /* Assistant actions */
     .bubble-actions{
@@ -135,12 +134,14 @@
     }
     .think-pill::after{
       content:"";position:absolute;inset:0;pointer-events:none;
-      background:linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.12) 50%, rgba(255,255,255,.04) 75%);
-      background-size:200% 100%;
-      animation:pillshimmer 1.15s linear infinite;
-      mix-blend-mode:screen;
+      background: linear-gradient(90deg, rgba(255,255,255,0) 0%,
+        rgba(255,255,255,.06) 35%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.06) 65%,
+        rgba(255,255,255,0) 100%);
+      transform: translateX(-100%);
+      animation: pillshimmer 1.15s linear infinite;
+      mix-blend-mode: screen;
     }
-    @keyframes pillshimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+    @keyframes pillshimmer{to{transform:translateX(100%)}}
     .think-pill.think-finished::after{display:none}
     .think-dot{width:6px;height:6px;border-radius:50%;
       background:radial-gradient(60% 120% at 30% 30%, var(--accent-1) 0%, var(--accent-2) 70%);
@@ -148,18 +149,15 @@
     }
     .think-muted{color:var(--muted)}
     /* When open, dock pill to panel */
-    .think-pill.open{
-      width:100%;
-      border-radius:8px 8px 0 0;
-    }
+    .think-pill.open{border-bottom-left-radius:8px;border-bottom-right-radius:8px}
     .think-panel{
-      display:none;margin-top:0;border:1px solid var(--border);border-radius:0 0 8px 8px;background:#0b101b;
+      display:none;margin-top:0;border:1px dashed #3a4054;border-radius:10px;background:#0b101b;
       padding:10px 12px;max-height:280px;overflow:auto;
       /* thoughts are not copiable */
       user-select:none;
     }
     .think-panel.open{
-      display:block;border-top:none;
+      display:block;border-top:none;border-top-left-radius:0;border-top-right-radius:0;
       margin-top:0;
     }
     .think-panel pre{margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px}
@@ -262,6 +260,7 @@
       <div class="chat-wrap">
         <div id="chat" class="chat" aria-live="polite" aria-label="Chat transcript">
           <div id="messages" class="list"></div>
+          <div id="bottomSentinel"></div>
         </div>
         <div id="jump" class="jump hidden" role="button" aria-label="Jump to latest">Jump to latest</div>
       </div>
@@ -381,6 +380,7 @@
   <script>
     const chatEl = document.getElementById('chat');
     const listEl = document.getElementById('messages');
+    const bottomSentinel = document.getElementById('bottomSentinel');
 
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
@@ -539,22 +539,19 @@
     promptEl.addEventListener('input', autosize); window.addEventListener('load', autosize);
 
     // Robust scroll control
-    function atBottom(){
-      return Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
-    }
+    const bottomObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.target === bottomSentinel) {
+        const atBottom = e.isIntersecting; follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
+      }
+    }, { root: chatEl, threshold: 1.0, rootMargin: '0px 0px -8px 0px' });
+    bottomObserver.observe(bottomSentinel);
+
     chatEl.addEventListener('scroll', () => {
-      follow = atBottom();
-      jumpBtn.classList.toggle('hidden', follow);
+      const atBottom = Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
+      follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
     });
-    function scrollToBottomIfFollowing(){
-      if (!follow) return;
-      chatEl.scrollTop = chatEl.scrollHeight;
-    }
-    jumpBtn.addEventListener('click', () => {
-      follow = true;
-      chatEl.scrollTop = chatEl.scrollHeight;
-      jumpBtn.classList.add('hidden');
-    });
+    function scrollToBottomIfFollowing(){ if (!follow) return; requestAnimationFrame(()=>{ chatEl.scrollTop = chatEl.scrollHeight; }); }
+    jumpBtn.addEventListener('click', () => { follow = true; chatEl.scrollTop = chatEl.scrollHeight; jumpBtn.classList.add('hidden'); });
 
     // Health/model lists
     async function checkHealth(){
