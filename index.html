@@ -132,16 +132,16 @@
       color:var(--text);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;
       overflow:hidden;
     }
+    .think-pill *, .think-panel *{user-select:none}
     .think-pill::after{
       content:"";position:absolute;inset:0;pointer-events:none;
-      background: linear-gradient(90deg, rgba(255,255,255,0) 0%,
-        rgba(255,255,255,.06) 35%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.06) 65%,
-        rgba(255,255,255,0) 100%);
-      transform: translateX(-100%);
+      background: linear-gradient(120deg, rgba(255,255,255,0) 0%,
+        rgba(255,255,255,.25) 50%, rgba(255,255,255,0) 100%);
+      background-size:200% 100%;
       animation: pillshimmer 1.15s linear infinite;
       mix-blend-mode: screen;
     }
-    @keyframes pillshimmer{to{transform:translateX(100%)}}
+    @keyframes pillshimmer{from{background-position:200% 0} to{background-position:-200% 0}}
     .think-pill.think-finished::after{display:none}
     .think-dot{width:6px;height:6px;border-radius:50%;
       background:radial-gradient(60% 120% at 30% 30%, var(--accent-1) 0%, var(--accent-2) 70%);
@@ -149,9 +149,9 @@
     }
     .think-muted{color:var(--muted)}
     /* When open, dock pill to panel */
-    .think-pill.open{border-bottom-left-radius:8px;border-bottom-right-radius:8px}
+    .think-pill.open{border-radius:8px 8px 0 0}
     .think-panel{
-      display:none;margin-top:0;border:1px dashed #3a4054;border-radius:10px;background:#0b101b;
+      display:none;margin-top:0;border:1px dashed #3a4054;border-radius:8px;background:#0b101b;
       padding:10px 12px;max-height:280px;overflow:auto;
       /* thoughts are not copiable */
       user-select:none;
@@ -160,7 +160,7 @@
       display:block;border-top:none;border-top-left-radius:0;border-top-right-radius:0;
       margin-top:0;
     }
-    .think-panel pre{margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px}
+    .think-panel pre{margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px;user-select:none}
 
     /* Composer */
     .composer{
@@ -550,8 +550,8 @@
       const atBottom = Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
       follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
     });
-    function scrollToBottomIfFollowing(){ if (!follow) return; requestAnimationFrame(()=>{ chatEl.scrollTop = chatEl.scrollHeight; }); }
-    jumpBtn.addEventListener('click', () => { follow = true; chatEl.scrollTop = chatEl.scrollHeight; jumpBtn.classList.add('hidden'); });
+    function scrollToBottomIfFollowing(){ if (!follow) return; requestAnimationFrame(()=>{ bottomSentinel.scrollIntoView({block:'end'}); }); }
+    jumpBtn.addEventListener('click', () => { follow = true; bottomSentinel.scrollIntoView({block:'end'}); jumpBtn.classList.add('hidden'); });
 
     // Health/model lists
     async function checkHealth(){
