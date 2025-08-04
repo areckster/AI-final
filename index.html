@@ -125,12 +125,12 @@
     }
 
     /* Thinking pill + panel */
-    .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px}
+    .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px;padding-right:80px}
     .think-pill{
       position:relative;display:inline-flex;align-items:center;gap:8px;
       border:1px solid var(--border);background:#0f1729;
       color:var(--text);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;
-      overflow:hidden;
+      overflow:hidden;flex-wrap:wrap;max-width:100%;min-width:0;
     }
     .think-pill *, .think-panel *{user-select:none}
     .think-pill::after{
@@ -650,6 +650,7 @@
         const nowOpen = !panel.classList.contains('open');
         panel.classList.toggle('open', nowOpen);
         pill.classList.toggle('open', nowOpen);
+        scrollToBottomIfFollowing();
       });
 
       // nested scroll handling; need non-passive wheel to forward
@@ -674,6 +675,7 @@
       ctx.panel.classList.remove('open');
       ctx.pill.classList.remove('open');
       ctx.finished = true;
+      scrollToBottomIfFollowing();
     }
     function formatDuration(ms){
       const s = Math.round(ms/1000);
@@ -746,6 +748,7 @@
       // thinking UI: auto-open at start
       msgCtx.thinking = createThinkingUI(msgCtx.msg);
       msgCtx.thinking.panel.classList.add('open'); msgCtx.thinking.pill.classList.add('open');
+      scrollToBottomIfFollowing();
 
       // lock UI
       streaming = true; follow = true; setButtonState('pause'); updateCtxHint();
@@ -818,6 +821,7 @@
               const raw = msgCtx.body.getAttribute('data-raw') || '';
               history.push({role:'assistant', content: raw});
               updateCtxHint();
+              scrollToBottomIfFollowing();
             }
           }
         }
@@ -827,6 +831,7 @@
         streaming = false; setButtonState('send');
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
+        scrollToBottomIfFollowing();
       }
     }
 
