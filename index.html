@@ -75,7 +75,6 @@
       overflow-y:auto;scroll-behavior:smooth;padding:18px 18px 0;
       overscroll-behavior: contain;
     }
-    #bottomSentinel{height:1px;}
 
     /* Welcome overlay */
     .welcome{
@@ -126,12 +125,12 @@
     }
 
     /* Thinking pill + panel */
-    .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px;padding-right:110px}
+    .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px}
     .think-pill{
       position:relative;display:inline-flex;align-items:center;gap:8px;
       border:1px solid var(--border);background:#0f1729;
       color:var(--text);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;
-      white-space:nowrap;
+      overflow:hidden;
     }
     .think-pill *, .think-panel *{user-select:none}
     .think-pill::after{
@@ -544,7 +543,7 @@
       for (const e of entries) if (e.target === bottomSentinel) {
         const atBottom = e.isIntersecting; follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
       }
-    }, { root: chatEl, threshold: 0 });
+    }, { root: chatEl, threshold: 1.0, rootMargin: '0px 0px -8px 0px' });
     bottomObserver.observe(bottomSentinel);
 
     chatEl.addEventListener('scroll', () => {
@@ -675,7 +674,6 @@
       ctx.panel.classList.remove('open');
       ctx.pill.classList.remove('open');
       ctx.finished = true;
-      scrollToBottomIfFollowing();
     }
     function formatDuration(ms){
       const s = Math.round(ms/1000);
@@ -812,16 +810,15 @@
             else if (event.type === 'error'){
               appendVisible(msgCtx, `\n\n**[error]** ${event.message}`);
             }
-              else if (event.type === 'done'){
-                // finalize pill if still running
-                const tctx = msgCtx.thinking;
-                if (tctx && !tctx.finished){ tctx.stop = performance.now(); finishThinkingUI(tctx); }
-                msgCtx.msg.classList.remove('streaming');
-                const raw = msgCtx.body.getAttribute('data-raw') || '';
-                history.push({role:'assistant', content: raw});
-                updateCtxHint();
-                scrollToBottomIfFollowing();
-              }
+            else if (event.type === 'done'){
+              // finalize pill if still running
+              const tctx = msgCtx.thinking;
+              if (tctx && !tctx.finished){ tctx.stop = performance.now(); finishThinkingUI(tctx); }
+              msgCtx.msg.classList.remove('streaming');
+              const raw = msgCtx.body.getAttribute('data-raw') || '';
+              history.push({role:'assistant', content: raw});
+              updateCtxHint();
+            }
           }
         }
       } catch(err){
