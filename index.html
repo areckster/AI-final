@@ -68,12 +68,11 @@
 
     /* Main layout */
     main{position:relative;display:flex;flex-direction:column;overflow:hidden;}
-    .chat-wrap{flex:1;display:flex;justify-content:center;overflow:hidden;}
+    .chat-wrap{flex:1;display:flex;justify-content:center;overflow-y:auto;scroll-behavior:smooth;overscroll-behavior:contain;}
     .chat{
       flex:1;max-width:900px;width:100%;
       display:flex;flex-direction:column;
-      overflow-y:auto;scroll-behavior:smooth;padding:18px 18px 0;
-      overscroll-behavior: contain;
+      padding:18px 18px 0;
     }
 
     /* Welcome overlay */
@@ -257,10 +256,9 @@
       <!-- Welcome overlay -->
       <div id="welcome" class="welcome"><div id="welcomeText" class="inner">Welcome back.</div></div>
 
-      <div class="chat-wrap">
-        <div id="chat" class="chat" aria-live="polite" aria-label="Chat transcript">
+      <div id="chatWrap" class="chat-wrap" aria-live="polite" aria-label="Chat transcript">
+        <div id="chat" class="chat">
           <div id="messages" class="list"></div>
-          <div id="bottomSentinel"></div>
         </div>
         <div id="jump" class="jump hidden" role="button" aria-label="Jump to latest">Jump to latest</div>
       </div>
@@ -378,9 +376,8 @@
   </script>
 
   <script>
-    const chatEl = document.getElementById('chat');
+    const chatEl = document.getElementById('chatWrap');
     const listEl = document.getElementById('messages');
-    const bottomSentinel = document.getElementById('bottomSentinel');
 
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
@@ -539,13 +536,6 @@
     promptEl.addEventListener('input', autosize); window.addEventListener('load', autosize);
 
     // Robust scroll control
-    const bottomObserver = new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.target === bottomSentinel) {
-        const atBottom = e.isIntersecting; follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
-      }
-    }, { root: chatEl, threshold: 1.0, rootMargin: '0px 0px -8px 0px' });
-    bottomObserver.observe(bottomSentinel);
-
     chatEl.addEventListener('scroll', () => {
       const atBottom = Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
       follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
