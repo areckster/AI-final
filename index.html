@@ -68,15 +68,7 @@
 
     /* Main layout */
     main{position:relative;display:flex;flex-direction:column;overflow:hidden;}
-    .chat-wrap{
-      flex:1;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      overflow-y:auto;
-      scroll-behavior:smooth;
-      overscroll-behavior:contain;
-    }
+    .chat-wrap{flex:1;display:flex;justify-content:center;overflow-y:auto;scroll-behavior:smooth;overscroll-behavior:contain;}
     .chat{
       flex:1;max-width:900px;width:100%;
       display:flex;flex-direction:column;
@@ -172,7 +164,6 @@
     /* Composer */
     .composer{
       position:sticky;bottom:0;padding:18px 16px 24px;background:linear-gradient(180deg, transparent, rgba(10,12,18,.6) 60%, rgba(10,12,18,.85));
-      width:100%;
     }
     .dock{
       max-width:900px;margin:0 auto;
@@ -270,21 +261,21 @@
           <div id="messages" class="list"></div>
         </div>
         <div id="jump" class="jump hidden" role="button" aria-label="Jump to latest">Jump to latest</div>
+      </div>
 
-        <div class="composer">
-          <div class="dock">
-            <div class="left">
-              <div class="attachments" id="attachments"></div>
-              <textarea id="prompt" placeholder="Ask anything…"></textarea>
-            </div>
-            <div class="controls">
-              <button id="sendBtn" type="button" class="btn" aria-label="Send">
-                <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M22 2L11 13"/>
-                  <path d="M22 2l-7 20-4-9-9-4 20-7Z"/>
-                </svg>
-              </button>
-            </div>
+      <div class="composer">
+        <div class="dock">
+          <div class="left">
+            <div class="attachments" id="attachments"></div>
+            <textarea id="prompt" placeholder="Ask anything…"></textarea>
+          </div>
+          <div class="controls">
+            <button id="sendBtn" type="button" class="btn" aria-label="Send">
+              <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 2L11 13"/>
+                <path d="M22 2l-7 20-4-9-9-4 20-7Z"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
