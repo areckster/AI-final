@@ -16,6 +16,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
+from tools import web_search, open_url
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Configure via env if you want
@@ -23,6 +25,49 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MODEL = os.getenv("MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:4b-q5_k_m")
 DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
 USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for recent or factual info and return top results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "k": {
+                        "type": "integer",
+                        "description": "Number of results",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 10,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_url",
+            "description": "Open a URL and return a concise text extract for summarization.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Max characters of extracted text",
+                        "default": 6000,
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+]
 
 app = FastAPI(title="Ollama Chat UI")
 
@@ -126,55 +171,86 @@ async def chat_stream(payload: Dict[str, Any]):
     if system_prompt:
         messages = [{"role": "system", "content": system_prompt}] + messages
 
-    options = build_options(settings, messages)
-
     async def event_gen():
         DATA = b"data: "
         END = b"\n\n"
-        req = {"model": MODEL, "messages": messages, "stream": True, "options": options}
-        try:
-            client = app.state.client
-            async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req, timeout=None) as resp:
-                buffer = b""
-                done = False
-                async for chunk in resp.aiter_bytes():
-                    if not chunk:
-                        continue
-                    buffer += chunk
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        line = line.strip()
-                        if not line:
+        convo = list(messages)
+        client = app.state.client
+
+        while True:
+            options = build_options(settings, convo)
+            req = {
+                "model": MODEL,
+                "messages": convo,
+                "stream": True,
+                "options": options,
+                "tools": TOOLS,
+            }
+            tool_calls = []
+            done_payload = None
+            try:
+                async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req, timeout=None) as resp:
+                    buffer = b""
+                    async for chunk in resp.aiter_bytes():
+                        if not chunk:
                             continue
-                        try:
-                            data = orjson.loads(line)
-                        except Exception:
-                            continue
+                        buffer += chunk
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                data = orjson.loads(line)
+                            except Exception:
+                                continue
 
-                        msg = data.get("message", {})
-                        if isinstance(msg, dict) and "content" in msg:
-                            yield DATA + orjson.dumps({"type": "delta", "delta": msg["content"]}) + END
+                            msg = data.get("message", {})
+                            if isinstance(msg, dict) and "content" in msg:
+                                yield DATA + orjson.dumps({"type": "delta", "delta": msg["content"]}) + END
 
-                        if "tool_calls" in data:
-                            yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": data["tool_calls"]}) + END
+                            if "tool_calls" in data:
+                                tool_calls = data["tool_calls"]
+                                yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": tool_calls}) + END
 
-                        if data.get("done"):
-                            metrics = data.get("metrics", {})
-                            usage = {
-                                "prompt_eval_count": metrics.get("prompt_eval_count"),
-                                "eval_count": metrics.get("eval_count"),
-                                "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
-                                "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
-                            }
-                            yield DATA + orjson.dumps({"type": "done", "options": options, "usage": usage}) + END
-                            done = True
-                            break
-                    if done:
-                        break
-        except httpx.RequestError as e:
-            yield DATA + orjson.dumps({"type": "error", "message": f"Backend request failed: {e}"}) + END
-        except Exception as e:
-            yield DATA + orjson.dumps({"type": "error", "message": f"Unexpected error: {e.__class__.__name__}: {e}"}) + END
+                            if data.get("done"):
+                                metrics = data.get("metrics", {})
+                                usage = {
+                                    "prompt_eval_count": metrics.get("prompt_eval_count"),
+                                    "eval_count": metrics.get("eval_count"),
+                                    "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
+                                    "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
+                                }
+                                done_payload = {"type": "done", "options": options, "usage": usage}
+                                break
+            except httpx.RequestError as e:
+                yield DATA + orjson.dumps({"type": "error", "message": f"Backend request failed: {e}"}) + END
+                break
+            except Exception as e:
+                yield DATA + orjson.dumps({"type": "error", "message": f"Unexpected error: {e.__class__.__name__}: {e}"}) + END
+                break
+
+            if tool_calls:
+                convo.append({"role": "assistant", "tool_calls": tool_calls})
+                for tc in tool_calls:
+                    name = tc.get("function", {}).get("name")
+                    args = tc.get("function", {}).get("arguments") or {}
+                    try:
+                        if name == "web_search":
+                            payload = web_search(args.get("query", ""), int(args.get("k", 5)))
+                        elif name == "open_url":
+                            payload = open_url(args["url"], int(args.get("max_chars", 6000)))
+                        else:
+                            payload = {"error": f"Unknown tool {name}"}
+                    except Exception as e:
+                        payload = {"error": f"{type(e).__name__}: {e}"}
+                    convo.append({"role": "tool", "content": orjson.dumps(payload, ensure_ascii=False).decode()})
+                continue
+
+            if done_payload:
+                yield DATA + orjson.dumps(done_payload) + END
+            break
+
         yield b"event: close\ndata: {}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
