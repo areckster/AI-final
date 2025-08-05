@@ -22,21 +22,9 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MODEL = os.getenv("MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:4b-q5_k_m")
 DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
-USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "8192"))
-CTX_MULTIPLIER = float(os.getenv("CTX_MULTIPLIER", "1.1"))
+USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
 
-# Global HTTP client managed via lifespan events
-http_client: httpx.AsyncClient | None = None
-
-
-async def lifespan(app: FastAPI):
-    global http_client
-    http_client = httpx.AsyncClient()
-    yield
-    await http_client.aclose()
-
-
-app = FastAPI(title="Ollama Chat UI", lifespan=lifespan)
+app = FastAPI(title="Ollama Chat UI")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +51,7 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
     seed = settings.get("seed") or None
     num_predict = settings.get("num_predict") or None
 
-    dynamic_ctx = bool(settings.get("dynamic_ctx", False))
+    dynamic_ctx = bool(settings.get("dynamic_ctx", True))
     user_max_ctx = int(settings.get("max_ctx", USER_MAX_CTX))
     static_ctx = int(settings.get("num_ctx", DEFAULT_NUM_CTX))
 
@@ -71,7 +59,7 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
     est_tokens = estimate_tokens(joined)
 
     if dynamic_ctx:
-        num_ctx = clamp(int(est_tokens * CTX_MULTIPLIER), 4096, user_max_ctx)
+        num_ctx = clamp(int(est_tokens * 1.2), 4096, user_max_ctx)
     else:
         num_ctx = clamp(static_ctx, 2048, user_max_ctx)
 
@@ -99,8 +87,9 @@ async def root():
 @app.get("/api/health")
 async def health():
     try:
-        r = await http_client.get(f"{OLLAMA_HOST}/api/tags", timeout=3.0)
-        ok = (r.status_code == 200)
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{OLLAMA_HOST}/api/tags")
+            ok = (r.status_code == 200)
     except Exception:
         ok = False
     return {"ok": ok, "ollama": OLLAMA_HOST, "model": MODEL}
@@ -120,16 +109,15 @@ async def chat_stream(payload: Dict[str, Any]):
     async def event_gen():
         req = {"model": MODEL, "messages": messages, "stream": True, "options": options}
         try:
-            async with http_client.stream(
-                "POST", f"{OLLAMA_HOST}/api/chat", json=req, timeout=None
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except Exception:
-                        continue
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
 
                         msg = data.get("message", {})
                         if isinstance(msg, dict) and "content" in msg:
@@ -167,5 +155,6 @@ async def set_model(payload: Dict[str, Any]):
 
 @app.get("/api/models")
 async def list_models():
-    r = await http_client.get(f"{OLLAMA_HOST}/api/tags", timeout=10.0)
-    return JSONResponse(r.json())
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(f"{OLLAMA_HOST}/api/tags")
+        return JSONResponse(r.json())
