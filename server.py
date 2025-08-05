@@ -233,6 +233,7 @@ async def chat_stream(payload: Dict[str, Any]):
             if tool_calls:
                 convo.append({"role": "assistant", "tool_calls": tool_calls})
                 for tc in tool_calls:
+                    call_id = tc.get("id")
                     name = tc.get("function", {}).get("name")
                     args = tc.get("function", {}).get("arguments") or {}
                     try:
@@ -244,7 +245,11 @@ async def chat_stream(payload: Dict[str, Any]):
                             payload = {"error": f"Unknown tool {name}"}
                     except Exception as e:
                         payload = {"error": f"{type(e).__name__}: {e}"}
-                    convo.append({"role": "tool", "content": orjson.dumps(payload, ensure_ascii=False).decode()})
+                    convo.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": orjson.dumps(payload, ensure_ascii=False).decode(),
+                    })
                 continue
 
             if done_payload:
