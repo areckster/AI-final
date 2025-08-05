@@ -981,11 +981,17 @@
       // keep scroll inside card
       panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); }, {passive:false});
 
-      return {
+      const ctx = {
         pill, label, spinner, panel, pre, counter,
         start: performance.now(), stop: null,
-        inThink:false, sawThinkOpen:false, sawThinkClose:false, finished:false
+        inThink:false, sawThinkOpen:false, sawThinkClose:false, finished:false,
+        mode:'reason'
       };
+      ctx.setMode = (m) => {
+        ctx.mode = m;
+        ctx.label.textContent = m === 'search' ? 'Searching…' : 'Reasoning…';
+      };
+      return ctx;
     }
     function finishThinkingUI(ctx){
       if (!ctx || ctx.finished) return;
@@ -1117,6 +1123,7 @@
             let event; try{ event = JSON.parse(payload); } catch { continue; }
 
             if (event.type === 'delta'){
+              if (msgCtx?.thinking?.mode === 'search') msgCtx.thinking.setMode('reason');
               if (!gotFirstDelta){
                 gotFirstDelta = true;
                 firstByteAt = performance.now();
@@ -1136,6 +1143,17 @@
               }
 
               appendVisible(msgCtx, visible);
+            }
+            else if (event.type === 'tool_calls'){
+              const tctx = msgCtx.thinking;
+              if (tctx){
+                tctx.setMode('search');
+                for (const tc of event.tool_calls || []){
+                  const name = tc.function?.name || tc.name || 'tool';
+                  tctx.pre.textContent += `\n[tool] ${name}`;
+                }
+                if (tctx.counter) tctx.counter.textContent = `tokens: ${estimateTokens(tctx.pre.textContent)}`;
+              }
             }
             else if (event.type === 'error'){
               appendVisible(msgCtx, `\n\n**[error]** ${event.message}`);
