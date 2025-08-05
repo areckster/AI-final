@@ -212,6 +212,7 @@ async def chat_stream(payload: Dict[str, Any]):
                             if "tool_calls" in data:
                                 tool_calls = data["tool_calls"]
                                 yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": tool_calls}) + END
+                                break
 
                             if data.get("done"):
                                 metrics = data.get("metrics", {})
@@ -223,6 +224,8 @@ async def chat_stream(payload: Dict[str, Any]):
                                 }
                                 done_payload = {"type": "done", "options": options, "usage": usage}
                                 break
+                        if tool_calls:
+                            break
             except httpx.RequestError as e:
                 yield DATA + orjson.dumps({"type": "error", "message": f"Backend request failed: {e}"}) + END
                 break
