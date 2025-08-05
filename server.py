@@ -12,6 +12,7 @@ import math
 from typing import Any, Dict, List
 
 import httpx
+import orjson
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -33,6 +34,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    app.state.client = httpx.AsyncClient()
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    await app.state.client.aclose()
 
 
 def estimate_tokens(text: str) -> int:
@@ -87,9 +98,8 @@ async def root():
 @app.get("/api/health")
 async def health():
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{OLLAMA_HOST}/api/tags")
-            ok = (r.status_code == 200)
+        r = await app.state.client.get(f"{OLLAMA_HOST}/api/tags", timeout=3.0)
+        ok = (r.status_code == 200)
     except Exception:
         ok = False
     return {"ok": ok, "ollama": OLLAMA_HOST, "model": MODEL}
@@ -109,37 +119,37 @@ async def chat_stream(payload: Dict[str, Any]):
     async def event_gen():
         req = {"model": MODEL, "messages": messages, "stream": True, "options": options}
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req) as resp:
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                        except Exception:
-                            continue
+            client = app.state.client
+            async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req, timeout=None) as resp:
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
 
-                        msg = data.get("message", {})
-                        if isinstance(msg, dict) and "content" in msg:
-                            yield f"data: {json.dumps({'type':'delta','delta': msg['content']})}\n\n"
+                    msg = data.get("message", {})
+                    if isinstance(msg, dict) and "content" in msg:
+                        yield f"data: {orjson.dumps({'type':'delta','delta': msg['content']}).decode()}\n\n"
 
-                        if "tool_calls" in data:
-                            yield f"data: {json.dumps({'type':'tool_calls','tool_calls': data['tool_calls']})}\n\n"
+                    if "tool_calls" in data:
+                        yield f"data: {orjson.dumps({'type':'tool_calls','tool_calls': data['tool_calls']}).decode()}\n\n"
 
-                        if data.get("done"):
-                            metrics = data.get("metrics", {})
-                            usage = {
-                                "prompt_eval_count": metrics.get("prompt_eval_count"),
-                                "eval_count": metrics.get("eval_count"),
-                                "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
-                                "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
-                            }
-                            yield f"data: {json.dumps({'type':'done','options': options, 'usage': usage})}\n\n"
-                            break
+                    if data.get("done"):
+                        metrics = data.get("metrics", {})
+                        usage = {
+                            "prompt_eval_count": metrics.get("prompt_eval_count"),
+                            "eval_count": metrics.get("eval_count"),
+                            "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
+                            "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
+                        }
+                        yield f"data: {orjson.dumps({'type':'done','options': options, 'usage': usage}).decode()}\n\n"
+                        break
         except httpx.RequestError as e:
-            yield f"data: {json.dumps({'type':'error','message': f'Backend request failed: {e}'})}\n\n"
+            yield f"data: {orjson.dumps({'type':'error','message': f'Backend request failed: {e}'}).decode()}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type':'error','message': f'Unexpected error: {e.__class__.__name__}: {e}'})}\n\n"
+            yield f"data: {orjson.dumps({'type':'error','message': f'Unexpected error: {e.__class__.__name__}: {e}'}).decode()}\n\n"
 
         yield "event: close\ndata: {}\n\n"
 
@@ -155,6 +165,5 @@ async def set_model(payload: Dict[str, Any]):
 
 @app.get("/api/models")
 async def list_models():
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(f"{OLLAMA_HOST}/api/tags")
-        return JSONResponse(r.json())
+    r = await app.state.client.get(f"{OLLAMA_HOST}/api/tags", timeout=10.0)
+    return JSONResponse(r.json())
