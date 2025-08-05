@@ -214,17 +214,15 @@ async def chat_stream(payload: Dict[str, Any]):
                                 yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": tool_calls}) + END
                                 break
 
-                            if data.get("done"):
-                                metrics = data.get("metrics", {})
-                                usage = {
-                                    "prompt_eval_count": metrics.get("prompt_eval_count"),
-                                    "eval_count": metrics.get("eval_count"),
-                                    "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
-                                    "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
-                                }
-                                done_payload = {"type": "done", "options": options, "usage": usage}
-                                break
-                        if tool_calls:
+                        if data.get("done"):
+                            metrics = data.get("metrics", {})
+                            usage = {
+                                "prompt_eval_count": metrics.get("prompt_eval_count"),
+                                "eval_count": metrics.get("eval_count"),
+                                "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
+                                "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
+                            }
+                            done_payload = {"type": "done", "options": options, "usage": usage}
                             break
             except httpx.RequestError as e:
                 yield DATA + orjson.dumps({"type": "error", "message": f"Backend request failed: {e}"}) + END
@@ -238,10 +236,13 @@ async def chat_stream(payload: Dict[str, Any]):
                 for tc in tool_calls:
                     call_id = tc.get("id")
                     name = tc.get("function", {}).get("name")
-                    args = tc.get("function", {}).get("arguments") or {}
+                    args_raw = tc.get("function", {}).get("arguments") or {}
                     try:
+                        args = orjson.loads(args_raw) if isinstance(args_raw, str) else args_raw
                         if name == "web_search":
                             payload = await web_search(args.get("query", ""), int(args.get("k", 5)))
+                            if isinstance(payload, dict) and payload.get("error"):
+                                payload = {"error": f"Search failed: {payload['error']}"}
                         elif name == "open_url":
                             payload = await open_url(args["url"], int(args.get("max_chars", 6000)))
                         else:

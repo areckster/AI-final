@@ -9,17 +9,22 @@ from bs4 import BeautifulSoup
 _SEARCH_CACHE: Dict[Tuple[str, int], Dict] = {}
 _URL_CACHE: Dict[Tuple[str, int], Dict] = {}
 
-async def _ddg_search_html(q: str, k: int = 5) -> List[Dict[str, str]]:
+async def _ddg_search_html(q: str, k: int = 5) -> List[Dict[str, str]] | Dict[str, str]:
     """Scrape DuckDuckGo's HTML results and return [{title,url,snippet}, ...]."""
     headers = {"User-Agent": "Mozilla/5.0"}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r = await client.get(
-            "https://duckduckgo.com/html/",
-            params={"q": q},
-            headers=headers,
-        )
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            r = await client.get(
+                "https://duckduckgo.com/html/",
+                params={"q": q},
+                headers=headers,
+            )
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+    except httpx.HTTPError as e:
+        return {"error": f"web search failed: {e}"}
+    except Exception as e:
+        return {"error": f"web search failed: {e}"}
     items = []
     for res in soup.select("div.result")[:k]:
         a = res.select_one("a.result__a")
@@ -70,8 +75,15 @@ async def web_search(query: str, k: int = 5) -> Dict:
     """Search the web for recent or factual info and return top results."""
     key = (query, k)
     if key not in _SEARCH_CACHE:
-        results = await _ddg_search_html(query, k)
-        _SEARCH_CACHE[key] = {"results": results, "source": "duckduckgo_html"}
+        try:
+            results = await _ddg_search_html(query, k)
+            if isinstance(results, dict) and results.get("error"):
+                return results
+            _SEARCH_CACHE[key] = {"results": results, "source": "duckduckgo_html"}
+        except httpx.HTTPError as e:
+            return {"error": f"web search failed: {e}"}
+        except Exception as e:
+            return {"error": f"web search failed: {e}"}
     return _SEARCH_CACHE[key]
 
 async def open_url(url: str, max_chars: int = 6000) -> Dict:
