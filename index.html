@@ -360,9 +360,9 @@
 
     <div class="section">
       <h3>Conversation</h3>
-      <div class="toggle"><span>Dynamic Context</span><input id="dynamicCtx" type="checkbox" /></div>
+      <div class="toggle"><span>Dynamic Context</span><input id="dynamicCtx" type="checkbox" checked /></div>
       <label for="maxCtx">Max Context (tokens)</label>
-      <input id="maxCtx" type="number" value="8192" min="4096" step="1024"/>
+      <input id="maxCtx" type="number" value="40000" min="4096" step="1024"/>
       <label for="numCtx">Static Context (if dynamic off)</label>
       <input id="numCtx" type="number" value="8192" min="2048" step="1024"/>
       <label for="systemPrompt">System Prompt (optional)</label>
@@ -452,8 +452,6 @@
     const numPredictEl = document.getElementById('numPredict');
     const seedEl = document.getElementById('seed');
     const systemPromptEl = document.getElementById('systemPrompt');
-
-    const CTX_MULT = 1.1;
 
     const newChatBtn = document.getElementById('newChat');
     const exportChatBtn = document.getElementById('exportChat');
@@ -755,10 +753,10 @@
     // Token estimate + ctx hint
     function estimateTokens(s){ return Math.ceil((s || '').length / 4); }
     function updateCtxHint(){
-      const settings = { dynamic_ctx: dynamicCtxEl.checked, max_ctx: parseInt(maxCtxEl.value || '8192', 10), num_ctx: parseInt(numCtxEl.value || '8192', 10) };
+      const settings = { dynamic_ctx: dynamicCtxEl.checked, max_ctx: parseInt(maxCtxEl.value || '40000', 10), num_ctx: parseInt(numCtxEl.value || '8192', 10) };
       const joined = history.map(m => `${m.role}: ${m.content}`).join('\n');
       const est = estimateTokens(joined);
-      const num_ctx = settings.dynamic_ctx ? Math.max(4096, Math.min(settings.max_ctx, Math.floor(est * CTX_MULT))) : settings.num_ctx;
+      const num_ctx = settings.dynamic_ctx ? Math.max(4096, Math.min(settings.max_ctx, Math.floor(est * 1.2))) : settings.num_ctx;
       ctxHint.textContent = `ctx: ${settings.dynamic_ctx ? 'auto' : num_ctx} (≈${num_ctx})`;
     }
     function updateTelemetry(inTokensOverride){
@@ -978,19 +976,9 @@
       const currentRaw = bodyEl.getAttribute('data-raw') || '';
       const nextRaw = currentRaw + deltaVisible;
       bodyEl.setAttribute('data-raw', nextRaw);
-
-      // batch DOM updates to reduce layout thrash
-      ctx.pendingRaw = nextRaw;
-      if (!ctx.rafScheduled){
-        ctx.rafScheduled = true;
-        requestAnimationFrame(() => {
-          const raw = ctx.pendingRaw || '';
-          bodyEl.innerHTML = renderMarkdown(raw);
-          lastOutTokenEstimate = estimateTokens(raw);
-          updateTelemetry();
-          ctx.rafScheduled = false;
-        });
-      }
+      bodyEl.innerHTML = renderMarkdown(nextRaw);
+      lastOutTokenEstimate = estimateTokens(nextRaw);
+      updateTelemetry();
     }
 
     // Send/stream
@@ -1031,7 +1019,7 @@
 
       const settings = {
         dynamic_ctx: dynamicCtxEl.checked,
-        max_ctx: parseInt(maxCtxEl.value || '8192', 10),
+        max_ctx: parseInt(maxCtxEl.value || '40000', 10),
         num_ctx: parseInt(numCtxEl.value || '8192', 10),
         temperature: parseFloat(temperatureEl.value || '0.9'),
         top_p: parseFloat(topPEl.value || '0.9'),
