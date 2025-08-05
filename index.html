@@ -43,6 +43,7 @@
       font:15px/1.55 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       background:var(--bg);
     }
+    body.static-bg{background:linear-gradient(135deg,var(--bg),var(--surface-2))}
     #stage{position:fixed;inset:0;z-index:-1}
     canvas#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
     .shell{display:grid;grid-template-rows:auto 1fr;min-height:100%}
@@ -361,6 +362,12 @@
     <div class="section">
       <h3>Conversation</h3>
       <div class="toggle"><span>Dynamic Context</span><input id="dynamicCtx" type="checkbox" checked /></div>
+      <div class="toggle"><span>Animated Background</span><input id="bgToggle" type="checkbox" checked /></div>
+      <label for="bgQuality">Background Quality</label>
+      <select id="bgQuality">
+        <option value="1">Low</option>
+        <option value="2">High</option>
+      </select>
       <label for="maxCtx">Max Context (tokens)</label>
       <input id="maxCtx" type="number" value="40000" min="4096" step="1024"/>
       <label for="numCtx">Static Context (if dynamic off)</label>
@@ -443,6 +450,10 @@
     const refreshModelsBtn = document.getElementById('refreshModels');
     const modelsListEl = document.getElementById('modelsList');
 
+    const bgToggleEl = document.getElementById('bgToggle');
+    const bgQualityEl = document.getElementById('bgQuality');
+    const stageEl = document.getElementById('stage');
+
     const dynamicCtxEl = document.getElementById('dynamicCtx');
     const maxCtxEl = document.getElementById('maxCtx');
     const numCtxEl = document.getElementById('numCtx');
@@ -469,14 +480,16 @@
     let attachments = [];
 
     const bgIdleSpeed = 0.5;
-    const bgActiveSpeed = 1.0;
-    let bgSpeed = bgIdleSpeed;
+   const bgActiveSpeed = 1.0;
+   let bgSpeed = bgIdleSpeed;
     let setWaterColors;
+    let dpr = 1;
+    let bgCtrl = null;
 
-    (() => {
+    function initBackground(){
+      if (bgCtrl) return;
       const canvas = document.getElementById('gl');
-      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-      const gl = canvas.getContext('webgl', { alpha:false, antialias:false, preserveDrawingBuffer:true });
+      const gl = canvas.getContext('webgl', { alpha:false, antialias:false, preserveDrawingBuffer:false, powerPreference:'low-power', desynchronized:true });
       if (!gl) return;
 
       function hexToRgb(hex){
@@ -620,44 +633,84 @@
       gl.uniform1f(U.absorb, params.absorb);
       gl.uniform1f(U.vignetteBoost, params.vignetteBoost);
 
-      function resize(){
-        const w = Math.floor(window.innerWidth * dpr);
-        const h = Math.floor(window.innerHeight * dpr);
-        canvas.width = w; canvas.height = h;
-        canvas.style.width = window.innerWidth + 'px';
-        canvas.style.height = window.innerHeight + 'px';
-        gl.viewport(0,0,w,h);
-        gl.uniform2f(U.res, w, h);
-      }
-      window.addEventListener('resize', resize, {passive:true});
+        function resize(){
+          const w = Math.floor(window.innerWidth * dpr);
+          const h = Math.floor(window.innerHeight * dpr);
+          canvas.width = w; canvas.height = h;
+          canvas.style.width = window.innerWidth + 'px';
+          canvas.style.height = window.innerHeight + 'px';
+          gl.viewport(0,0,w,h);
+          gl.uniform2f(U.res, w, h);
+        }
+        window.addEventListener('resize', resize, {passive:true});
+
+        function updateColors(){
+          const styles = getComputedStyle(document.documentElement);
+          gl.uniform3fv(U.deep,   hexToRgb(styles.getPropertyValue('--bg')));
+          gl.uniform3fv(U.shallow,hexToRgb(styles.getPropertyValue('--accent-2')));
+          gl.uniform3fv(U.foam,   hexToRgb(styles.getPropertyValue('--text')));
+          gl.uniform3fv(U.tint,   hexToRgb(styles.getPropertyValue('--accent-1')));
+        }
+        setWaterColors = updateColors;
+        updateColors();
+
+        let t = 0, last = 0;
+        let running = false;
+        let raf = 0, timeout = 0;
+        function loop(now){
+          if (!running || document.hidden || streaming) return;
+          if(!last) last = now;
+          const dt = Math.min(33, now-last) / 1000;
+          last = now;
+          t += dt;
+          gl.uniform1f(U.time, t);
+          gl.uniform1f(U.speed, bgSpeed);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          timeout = setTimeout(()=>{ raf = requestAnimationFrame(loop); }, 33);
+        }
+        function start(){ if(!running){ running = true; raf = requestAnimationFrame(loop); } }
+        function stop(){ running = false; cancelAnimationFrame(raf); clearTimeout(timeout); }
+      bgCtrl = { start, stop, resize };
       resize();
-
-      function updateColors(){
-        const styles = getComputedStyle(document.documentElement);
-        gl.uniform3fv(U.deep,   hexToRgb(styles.getPropertyValue('--bg')));
-        gl.uniform3fv(U.shallow,hexToRgb(styles.getPropertyValue('--accent-2')));
-        gl.uniform3fv(U.foam,   hexToRgb(styles.getPropertyValue('--text')));
-        gl.uniform3fv(U.tint,   hexToRgb(styles.getPropertyValue('--accent-1')));
+      if(!document.hidden && !streaming) start();
       }
-      setWaterColors = updateColors;
-      updateColors();
 
-      let t = 0, last = 0;
-      function loop(now){
-        if(!last) last = now;
-        const dt = Math.min(33, now-last) / 1000;
-        last = now;
-        t += dt;
-        gl.uniform1f(U.time, t);
-        gl.uniform1f(U.speed, bgSpeed);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        requestAnimationFrame(loop);
+      function enableBackground(){
+        if (!bgCtrl) initBackground();
+        stageEl.style.display = 'block';
+        document.body.classList.remove('static-bg');
+        if(bgCtrl && !document.hidden && !streaming) bgCtrl.start();
       }
-      requestAnimationFrame(loop);
-    })();
+      function disableBackground(){
+        stageEl.style.display = 'none';
+        document.body.classList.add('static-bg');
+        if(bgCtrl) bgCtrl.stop();
+      }
 
-    // Telemetry
-    let startAt = 0;
+      function saveBgPref(){
+        localStorage.setItem('bgPref', JSON.stringify({enabled:bgToggleEl.checked, quality:parseFloat(bgQualityEl.value)}));
+      }
+      function applyBgPref(){
+        dpr = parseFloat(bgQualityEl.value);
+        if(bgToggleEl.checked) enableBackground(); else disableBackground();
+        if(bgCtrl) bgCtrl.resize();
+      }
+
+      (function initBgPref(){
+        const pref = JSON.parse(localStorage.getItem('bgPref') || '{}');
+        if (pref.enabled === false) bgToggleEl.checked = false;
+        if (pref.quality) { bgQualityEl.value = String(pref.quality); dpr = parseFloat(bgQualityEl.value); }
+        applyBgPref();
+      })();
+      bgToggleEl.addEventListener('change', ()=>{ applyBgPref(); saveBgPref(); });
+      bgQualityEl.addEventListener('change', ()=>{ applyBgPref(); saveBgPref(); });
+      document.addEventListener('visibilitychange', ()=>{
+        if(document.hidden){ if(bgCtrl) bgCtrl.stop(); }
+        else if(bgToggleEl.checked && bgCtrl) bgCtrl.start();
+      });
+
+      // Telemetry
+      let startAt = 0;
     let firstByteAt = 0;
     let lastOutTokenEstimate = 0;
 
@@ -1020,6 +1073,7 @@
 
       // lock UI
       streaming = true; setButtonState('pause'); updateCtxHint();
+      if(bgCtrl) bgCtrl.stop();
       bgSpeed = bgActiveSpeed;
 
       const settings = {
@@ -1099,6 +1153,7 @@
       } finally {
         streaming = false; setButtonState('send');
         bgSpeed = bgIdleSpeed;
+        if(bgToggleEl.checked && !document.hidden && bgCtrl) bgCtrl.start();
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
       }
