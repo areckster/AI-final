@@ -7,7 +7,6 @@
 #   3) http://localhost:8000
 
 import os
-import json
 import math
 from typing import Any, Dict, List
 
@@ -38,7 +37,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    app.state.client = httpx.AsyncClient()
+    limits = httpx.Limits(max_connections=20, max_keepalive_connections=20)
+    app.state.client = httpx.AsyncClient(http2=True, limits=limits)
 
 
 @app.on_event("shutdown")
@@ -65,6 +65,9 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
     dynamic_ctx = bool(settings.get("dynamic_ctx", True))
     user_max_ctx = int(settings.get("max_ctx", USER_MAX_CTX))
     static_ctx = int(settings.get("num_ctx", DEFAULT_NUM_CTX))
+    num_thread = settings.get("num_thread") or None
+    num_batch = settings.get("num_batch") or None
+    num_gpu = settings.get("num_gpu") or None
 
     joined = "".join(f"{m.get('role','')}: {m.get('content','')}\n" for m in messages)
     est_tokens = estimate_tokens(joined)
@@ -85,6 +88,15 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
         except: pass
     if num_predict not in (None, ""):
         try: opts["num_predict"] = int(num_predict)
+        except: pass
+    if num_thread not in (None, ""):
+        try: opts["num_thread"] = int(num_thread)
+        except: pass
+    if num_batch not in (None, ""):
+        try: opts["num_batch"] = int(num_batch)
+        except: pass
+    if num_gpu not in (None, ""):
+        try: opts["num_gpu"] = int(num_gpu)
         except: pass
 
     return opts
@@ -117,41 +129,53 @@ async def chat_stream(payload: Dict[str, Any]):
     options = build_options(settings, messages)
 
     async def event_gen():
+        DATA = b"data: "
+        END = b"\n\n"
         req = {"model": MODEL, "messages": messages, "stream": True, "options": options}
         try:
             client = app.state.client
             async with client.stream("POST", f"{OLLAMA_HOST}/api/chat", json=req, timeout=None) as resp:
-                async for line in resp.aiter_lines():
-                    if not line:
+                buffer = b""
+                done = False
+                async for chunk in resp.aiter_bytes():
+                    if not chunk:
                         continue
-                    try:
-                        data = json.loads(line)
-                    except Exception:
-                        continue
+                    buffer += chunk
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            data = orjson.loads(line)
+                        except Exception:
+                            continue
 
-                    msg = data.get("message", {})
-                    if isinstance(msg, dict) and "content" in msg:
-                        yield f"data: {orjson.dumps({'type':'delta','delta': msg['content']}).decode()}\n\n"
+                        msg = data.get("message", {})
+                        if isinstance(msg, dict) and "content" in msg:
+                            yield DATA + orjson.dumps({"type": "delta", "delta": msg["content"]}) + END
 
-                    if "tool_calls" in data:
-                        yield f"data: {orjson.dumps({'type':'tool_calls','tool_calls': data['tool_calls']}).decode()}\n\n"
+                        if "tool_calls" in data:
+                            yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": data["tool_calls"]}) + END
 
-                    if data.get("done"):
-                        metrics = data.get("metrics", {})
-                        usage = {
-                            "prompt_eval_count": metrics.get("prompt_eval_count"),
-                            "eval_count": metrics.get("eval_count"),
-                            "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
-                            "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
-                        }
-                        yield f"data: {orjson.dumps({'type':'done','options': options, 'usage': usage}).decode()}\n\n"
+                        if data.get("done"):
+                            metrics = data.get("metrics", {})
+                            usage = {
+                                "prompt_eval_count": metrics.get("prompt_eval_count"),
+                                "eval_count": metrics.get("eval_count"),
+                                "total_duration_ms": int(metrics.get("total_duration", 0) / 1e6) if metrics.get("total_duration") else None,
+                                "eval_duration_ms": int(metrics.get("eval_duration", 0) / 1e6) if metrics.get("eval_duration") else None,
+                            }
+                            yield DATA + orjson.dumps({"type": "done", "options": options, "usage": usage}) + END
+                            done = True
+                            break
+                    if done:
                         break
         except httpx.RequestError as e:
-            yield f"data: {orjson.dumps({'type':'error','message': f'Backend request failed: {e}'}).decode()}\n\n"
+            yield DATA + orjson.dumps({"type": "error", "message": f"Backend request failed: {e}"}) + END
         except Exception as e:
-            yield f"data: {orjson.dumps({'type':'error','message': f'Unexpected error: {e.__class__.__name__}: {e}'}).decode()}\n\n"
-
-        yield "event: close\ndata: {}\n\n"
+            yield DATA + orjson.dumps({"type": "error", "message": f"Unexpected error: {e.__class__.__name__}: {e}"}) + END
+        yield b"event: close\ndata: {}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
