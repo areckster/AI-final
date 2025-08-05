@@ -701,12 +701,14 @@
       // toggle panel
       pill.addEventListener('click', ()=>{
         if (panel.classList.contains('open')){
+          panel.classList.remove('open');
           panel.classList.add('closing');
           pill.classList.remove('open');
           panel.addEventListener('animationend', ()=>{
-            panel.classList.remove('open','closing');
+            panel.classList.remove('closing');
           }, {once:true});
         }else{
+          panel.classList.remove('closing');
           panel.classList.add('open');
           pill.classList.add('open');
         }
