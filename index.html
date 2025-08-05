@@ -372,11 +372,11 @@
     <details class="section">
       <summary><h3 style="display:inline">Advanced</h3></summary>
       <label for="temperature">Temperature</label>
-      <input id="temperature" type="number" value="0.7" min="0" max="2" step="0.05"/>
+      <input id="temperature" type="number" value="0.9" min="0" max="2" step="0.05"/>
       <label for="topP">top_p</label>
-      <input id="topP" type="number" value="0.95" min="0" max="1" step="0.01"/>
+      <input id="topP" type="number" value="0.9" min="0" max="1" step="0.01"/>
       <label for="topK">top_k</label>
-      <input id="topK" type="number" value="40" min="0" step="1"/>
+      <input id="topK" type="number" value="100" min="0" step="1"/>
       <label for="numPredict">Max Output Tokens (num_predict)</label>
       <input id="numPredict" type="number" value="" placeholder="leave blank for default"/>
       <label for="seed">Seed (optional)</label>
@@ -1021,9 +1021,9 @@
         dynamic_ctx: dynamicCtxEl.checked,
         max_ctx: parseInt(maxCtxEl.value || '40000', 10),
         num_ctx: parseInt(numCtxEl.value || '8192', 10),
-        temperature: parseFloat(temperatureEl.value || '0.7'),
-        top_p: parseFloat(topPEl.value || '0.95'),
-        top_k: parseInt(topKEl.value || '40', 10),
+        temperature: parseFloat(temperatureEl.value || '0.9'),
+        top_p: parseFloat(topPEl.value || '0.9'),
+        top_k: parseInt(topKEl.value || '100', 10),
         num_predict: (numPredictEl.value || '').trim(),
         seed: (seedEl.value || '').trim(),
       };
