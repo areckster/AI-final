@@ -976,9 +976,19 @@
       const currentRaw = bodyEl.getAttribute('data-raw') || '';
       const nextRaw = currentRaw + deltaVisible;
       bodyEl.setAttribute('data-raw', nextRaw);
-      bodyEl.innerHTML = renderMarkdown(nextRaw);
-      lastOutTokenEstimate = estimateTokens(nextRaw);
-      updateTelemetry();
+
+      // batch DOM updates to reduce layout thrash
+      ctx.pendingRaw = nextRaw;
+      if (!ctx.rafScheduled){
+        ctx.rafScheduled = true;
+        requestAnimationFrame(() => {
+          const raw = ctx.pendingRaw || '';
+          bodyEl.innerHTML = renderMarkdown(raw);
+          lastOutTokenEstimate = estimateTokens(raw);
+          updateTelemetry();
+          ctx.rafScheduled = false;
+        });
+      }
     }
 
     // Send/stream
