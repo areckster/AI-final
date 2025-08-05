@@ -252,7 +252,11 @@ async def chat_stream(payload: Dict[str, Any]):
                     convo.append({
                         "role": "tool",
                         "tool_call_id": call_id,
-                        "content": orjson.dumps(payload, ensure_ascii=False).decode(),
+                        # orjson does not support the ensure_ascii parameter used by
+                        # the standard library's json.dumps. By default it outputs
+                        # UTF-8 encoded bytes without escaping non-ascii characters,
+                        # so we can simply call dumps and decode the result.
+                        "content": orjson.dumps(payload).decode(),
                     })
                 continue
 
