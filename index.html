@@ -43,17 +43,8 @@
       font:15px/1.55 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       background:var(--bg);
     }
-    body::before{
-      content:"";position:fixed;inset:0;pointer-events:none;opacity:.25;mix-blend-mode:overlay;
-      background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Cg fill=%22%2314192a%22 fill-opacity=%220.25%22%3E%3Cpath d=%22M0 39h40v1H0zM0 0h1v40H0z%22/%3E%3C/g%3E%3C/svg%3E');
-    }
-    .bg{
-      position:fixed;top:-50%;left:-50%;width:200%;height:200%;
-      pointer-events:none;z-index:-1;opacity:.15;
-      background:conic-gradient(from 0deg, var(--accent-1), var(--accent-2), var(--accent-1));
-      filter:blur(120px);
-      will-change:transform;
-    }
+    #stage{position:fixed;inset:0;z-index:-1}
+    canvas#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
     .shell{display:grid;grid-template-rows:auto 1fr;min-height:100%}
 
     /* Header */
@@ -279,7 +270,7 @@
   </style>
 </head>
 <body>
-  <div class="bg"></div>
+  <div id="stage"><canvas id="gl"></canvas></div>
   <div class="shell">
     <header>
       <!-- Settings (sliders) -->
@@ -438,7 +429,6 @@
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
     const sendIcon = document.getElementById('sendIcon');
-    const bgEl = document.querySelector('.bg');
 
     const ctxHint = document.getElementById('ctxHint');
     const telemetryEl = document.getElementById('telemetry');
@@ -478,23 +468,193 @@
     let streaming = false;
     let attachments = [];
 
-    // animated background
-    const bgIdleSpeed = 0.02;
-    const bgActiveSpeed = 0.07;
+    const bgIdleSpeed = 0.5;
+    const bgActiveSpeed = 1.0;
     let bgSpeed = bgIdleSpeed;
-    let bgAngle = 0;
-    let bgPhaseX = Math.random() * Math.PI * 2;
-    let bgPhaseY = Math.random() * Math.PI * 2;
-    function animateBg(){
-      bgAngle += bgSpeed;
-      bgPhaseX += bgSpeed * 0.5;
-      bgPhaseY += bgSpeed * 0.5;
-      const x = Math.sin(bgPhaseX) * 20;
-      const y = Math.cos(bgPhaseY) * 20;
-      bgEl.style.transform = `translate(${x}%, ${y}%) rotate(${bgAngle}deg)`;
-      requestAnimationFrame(animateBg);
-    }
-    requestAnimationFrame(animateBg);
+    let setWaterColors;
+
+    (() => {
+      const canvas = document.getElementById('gl');
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const gl = canvas.getContext('webgl', { alpha:false, antialias:false, preserveDrawingBuffer:true });
+      if (!gl) return;
+
+      function hexToRgb(hex){
+        hex = hex.trim().replace('#','');
+        if (hex.length === 3) hex = hex.split('').map(c=>c+c).join('');
+        const num = parseInt(hex,16);
+        return [(num>>16)&255,(num>>8)&255,num&255].map(v=>v/255);
+      }
+
+      const vsSrc = `attribute vec2 a_pos; void main(){ gl_Position = vec4(a_pos,0.0,1.0); }`;
+
+      const fsSrc = `precision highp float;
+  uniform vec2 u_res;
+  uniform float u_time;
+  uniform vec3 u_deep;
+  uniform vec3 u_shallow;
+  uniform vec3 u_foam;
+  uniform vec3 u_tint;
+  uniform float u_speed;
+  uniform float u_scale;
+  uniform float u_specPower;
+  uniform float u_specStrength;
+  uniform float u_foamStrength;
+  uniform float u_chop;
+  uniform float u_depthBias;
+  uniform float u_absorb;
+  uniform float u_vignetteBoost;
+  float hash(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+  float noise(vec2 p){
+    vec2 i=floor(p), f=fract(p);
+    float a=hash(i), b=hash(i+vec2(1.,0.)), c=hash(i+vec2(0.,1.)), d=hash(i+vec2(1.,1.));
+    vec2 u=f*f*(3.-2.*f);
+    return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y;
+  }
+  float fbm(vec2 p){
+    float v=0., a=0.5; mat2 m=mat2(0.8,0.6,-0.6,0.8);
+    for(int i=0;i<6;i++){ v+=a*noise(p); p=m*p*2.0; a*=0.5; }
+    return v;
+  }
+  vec3 tonemap(vec3 c){ return c/(c+1.0); }
+  void main(){
+    vec2 uv = gl_FragCoord.xy / u_res.xy;
+    vec2 ndc = uv*2.0 - 1.0;
+    ndc.x *= u_res.x / u_res.y;
+    vec2 p = ndc;
+    p *= u_scale;
+    float t = u_time * u_speed;
+    vec2 q = p;
+    vec2 w1 = vec2(fbm(q*0.8 + t*0.08), fbm(q*0.8 - t*0.06));
+    vec2 w2 = vec2(fbm(q*1.6 - t*0.05), fbm(q*1.6 + t*0.07));
+    vec2 w = (w1 + w2)*0.8;
+    float h = fbm(q + w*2.0 + t*0.12);
+    h = mix(h, pow(max(h,0.0), 1.0 + u_chop*1.25), u_chop);
+    float e = 0.003;
+    float hx = fbm(q + vec2(e,0.0) + w*2.0 + t*0.12) - h;
+    float hy = fbm(q + vec2(0.0,e) + w*2.0 + t*0.12) - h;
+    vec3 n = normalize(vec3(-hx, -hy, 1.0/(0.4 + u_chop)));
+    vec3 L = normalize(vec3(0.4, 0.6, 0.7));
+    vec3 V = vec3(0.0, 0.0, 1.0);
+    float fres = pow(1.0 - max(dot(n, V), 0.0), 2.0);
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(n, H), 0.0), u_specPower) * u_specStrength;
+    float depth = smoothstep(0.20 + u_depthBias, 0.90, h);
+    depth = pow(depth, 1.25);
+    vec3 base = mix(u_deep, u_shallow, depth);
+    float slope = length(vec2(hx, hy));
+    float foam = smoothstep(0.18, 0.55, slope * 6.0) * u_foamStrength;
+    vec3 col = base;
+    col += spec * (0.8 + 0.45 * fres);
+    float absorb = mix(1.0 - u_absorb, 1.0, depth);
+    col *= absorb;
+    col = mix(col, u_foam, clamp(foam, 0.0, 1.0));
+    col = mix(col, col * u_tint, 0.12);
+    float vg = smoothstep(1.35, 0.2, length(ndc));
+    col *= mix(0.78, 1.0, vg * (1.0 + u_vignetteBoost));
+    col = tonemap(col);
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+
+      function createShader(type, src){
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        return s;
+      }
+      function createProgram(vsSrc, fsSrc){
+        const vs = createShader(gl.VERTEX_SHADER, vsSrc);
+        const fs = createShader(gl.FRAGMENT_SHADER, fsSrc);
+        const p = gl.createProgram();
+        gl.attachShader(p, vs);
+        gl.attachShader(p, fs);
+        gl.linkProgram(p);
+        return p;
+      }
+
+      const program = createProgram(vsSrc, fsSrc);
+      gl.useProgram(program);
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+      const locPos = gl.getAttribLocation(program, 'a_pos');
+      gl.enableVertexAttribArray(locPos);
+      gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+      const U = {
+        res: gl.getUniformLocation(program,'u_res'),
+        time: gl.getUniformLocation(program,'u_time'),
+        deep: gl.getUniformLocation(program,'u_deep'),
+        shallow: gl.getUniformLocation(program,'u_shallow'),
+        foam: gl.getUniformLocation(program,'u_foam'),
+        tint: gl.getUniformLocation(program,'u_tint'),
+        speed: gl.getUniformLocation(program,'u_speed'),
+        scale: gl.getUniformLocation(program,'u_scale'),
+        specPower: gl.getUniformLocation(program,'u_specPower'),
+        specStrength: gl.getUniformLocation(program,'u_specStrength'),
+        foamStrength: gl.getUniformLocation(program,'u_foamStrength'),
+        chop: gl.getUniformLocation(program,'u_chop'),
+        depthBias: gl.getUniformLocation(program,'u_depthBias'),
+        absorb: gl.getUniformLocation(program,'u_absorb'),
+        vignetteBoost: gl.getUniformLocation(program,'u_vignetteBoost')
+      };
+
+      const params = {
+        scale:1.60,
+        specPower:60.0,
+        specStrength:0.65,
+        foamStrength:0.35,
+        chop:0.15,
+        depthBias:-0.02,
+        absorb:0.15,
+        vignetteBoost:0.00
+      };
+
+      gl.uniform1f(U.scale, params.scale);
+      gl.uniform1f(U.specPower, params.specPower);
+      gl.uniform1f(U.specStrength, params.specStrength);
+      gl.uniform1f(U.foamStrength, params.foamStrength);
+      gl.uniform1f(U.chop, params.chop);
+      gl.uniform1f(U.depthBias, params.depthBias);
+      gl.uniform1f(U.absorb, params.absorb);
+      gl.uniform1f(U.vignetteBoost, params.vignetteBoost);
+
+      function resize(){
+        const w = Math.floor(window.innerWidth * dpr);
+        const h = Math.floor(window.innerHeight * dpr);
+        canvas.width = w; canvas.height = h;
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        gl.viewport(0,0,w,h);
+        gl.uniform2f(U.res, w, h);
+      }
+      window.addEventListener('resize', resize, {passive:true});
+      resize();
+
+      function updateColors(){
+        const styles = getComputedStyle(document.documentElement);
+        gl.uniform3fv(U.deep,   hexToRgb(styles.getPropertyValue('--bg')));
+        gl.uniform3fv(U.shallow,hexToRgb(styles.getPropertyValue('--accent-2')));
+        gl.uniform3fv(U.foam,   hexToRgb(styles.getPropertyValue('--text')));
+        gl.uniform3fv(U.tint,   hexToRgb(styles.getPropertyValue('--accent-1')));
+      }
+      setWaterColors = updateColors;
+      updateColors();
+
+      let t = 0, last = 0;
+      function loop(now){
+        if(!last) last = now;
+        const dt = Math.min(33, now-last) / 1000;
+        last = now;
+        t += dt;
+        gl.uniform1f(U.time, t);
+        gl.uniform1f(U.speed, bgSpeed);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    })();
 
     // Telemetry
     let startAt = 0;
@@ -520,7 +680,11 @@
       ['ocean','Ocean (Default)'],['emerald','Emerald'],['violet','Violet'],
       ['sunset','Sunset'],['rose','Rose'],['neon','Neon']
     ];
-    function applyTheme(key){ const t = THEMES[key] || THEMES.ocean; for (const k in t) document.documentElement.style.setProperty(k, t[k]); }
+    function applyTheme(key){
+      const t = THEMES[key] || THEMES.ocean;
+      for (const k in t) document.documentElement.style.setProperty(k, t[k]);
+      if (typeof setWaterColors === 'function') setWaterColors();
+    }
     (function initThemePicker(){
       themeOrder.forEach(([key,label])=>{
         const btn = document.createElement('button'); btn.className='swatch'; btn.type='button'; btn.dataset.theme = key;
