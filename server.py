@@ -45,9 +45,9 @@ def clamp(v: int, lo: int, hi: int) -> int:
 
 
 def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-    temperature = float(settings.get("temperature", 0.7))
-    top_p = float(settings.get("top_p", 0.95))
-    top_k = int(settings.get("top_k", 40))
+    temperature = float(settings.get("temperature", 0.9))
+    top_p = float(settings.get("top_p", 0.9))
+    top_k = int(settings.get("top_k", 100))
     seed = settings.get("seed") or None
     num_predict = settings.get("num_predict") or None
 
