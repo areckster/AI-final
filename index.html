@@ -763,7 +763,12 @@
       const lastUser = [...history].reverse().find(m => m.role === 'user');
       const inTok = inTokensOverride ?? (lastUser ? estimateTokens(lastUser.content) : 0);
       const latency = firstByteAt && startAt ? Math.max(0, Math.round(firstByteAt - startAt)) : '—';
-      telemetryEl.textContent = `tkn: ${inTok || '—'}/${lastOutTokenEstimate || '—'} • ${latency} ms`;
+      let tps = '—';
+      if (firstByteAt && lastOutTokenEstimate) {
+        const elapsed = (performance.now() - firstByteAt) / 1000;
+        if (elapsed > 0) tps = (lastOutTokenEstimate / elapsed).toFixed(1);
+      }
+      telemetryEl.textContent = `tkn: ${inTok || '—'}/${lastOutTokenEstimate || '—'} • ${latency} ms • ${tps} tps`;
     }
 
     // Copy code delegate (answer only; thoughts are not selectable)
@@ -1085,6 +1090,7 @@
               const raw = msgCtx.body.getAttribute('data-raw') || '';
               history.push({role:'assistant', content: raw});
               updateCtxHint();
+              updateTelemetry();
             }
           }
         }
