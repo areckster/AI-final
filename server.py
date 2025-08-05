@@ -209,8 +209,8 @@ async def chat_stream(payload: Dict[str, Any]):
                             if isinstance(msg, dict) and "content" in msg:
                                 yield DATA + orjson.dumps({"type": "delta", "delta": msg["content"]}) + END
 
-                            if "tool_calls" in data:
-                                tool_calls = data["tool_calls"]
+                            if isinstance(msg, dict) and "tool_calls" in msg:
+                                tool_calls = msg["tool_calls"]
                                 yield DATA + orjson.dumps({"type": "tool_calls", "tool_calls": tool_calls}) + END
                                 break
 
