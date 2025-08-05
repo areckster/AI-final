@@ -41,12 +41,21 @@
     body{
       color:var(--text);
       font:15px/1.55 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      background: radial-gradient(1200px 800px at 70% -10%, #141a2d 0%, var(--bg) 55%) fixed;
+      background:var(--bg);
     }
     body::before{
       content:"";position:fixed;inset:0;pointer-events:none;opacity:.25;mix-blend-mode:overlay;
       background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Cg fill=%22%2314192a%22 fill-opacity=%220.25%22%3E%3Cpath d=%22M0 39h40v1H0zM0 0h1v40H0z%22/%3E%3C/g%3E%3C/svg%3E');
     }
+    .bg{
+      position:fixed;top:-50%;left:-50%;width:200%;height:200%;
+      pointer-events:none;z-index:-1;opacity:.15;
+      background:conic-gradient(from 0deg, var(--accent-1), var(--accent-2), var(--accent-1));
+      filter:blur(120px);
+      animation:bg-spin 30s linear infinite;
+      animation-play-state:paused;
+    }
+    @keyframes bg-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
     .shell{display:grid;grid-template-rows:auto 1fr;min-height:100%}
 
     /* Header */
@@ -169,7 +178,7 @@
       left:50%;
       transform:translateX(-50%);
       bottom:120px;
-      width:min(90%, var(--msg-max));
+      width:min(80%, var(--msg-max));
       max-height:calc(100vh - 200px);
       overflow:auto;
       background:rgba(16,20,30,.45);
@@ -281,6 +290,7 @@
   </style>
 </head>
 <body>
+  <div class="bg"></div>
   <div class="shell">
     <header>
       <!-- Settings (sliders) -->
@@ -444,6 +454,7 @@
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
     const sendIcon = document.getElementById('sendIcon');
+    const bgEl = document.querySelector('.bg');
 
     const ctxHint = document.getElementById('ctxHint');
     const telemetryEl = document.getElementById('telemetry');
@@ -702,6 +713,7 @@
       pill.addEventListener('click', ()=>{
         if (panel.classList.contains('open')){
           panel.classList.remove('open');
+          void panel.offsetWidth;
           panel.classList.add('closing');
           pill.classList.remove('open');
           panel.addEventListener('animationend', ()=>{
@@ -709,6 +721,7 @@
           }, {once:true});
         }else{
           panel.classList.remove('closing');
+          void panel.offsetWidth;
           panel.classList.add('open');
           pill.classList.add('open');
         }
@@ -816,6 +829,7 @@
 
       // lock UI
       streaming = true; follow = true; setButtonState('pause'); updateCtxHint();
+      bgEl.style.animationPlayState = 'running';
 
       const settings = {
         dynamic_ctx: dynamicCtxEl.checked,
@@ -893,6 +907,7 @@
         if (msgCtx) appendVisible(msgCtx, `\n\n**[error]** ${err}`);
       } finally {
         streaming = false; setButtonState('send');
+        bgEl.style.animationPlayState = 'paused';
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
         scrollToBottomIfFollowing();
