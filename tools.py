@@ -2,24 +2,24 @@ import re
 import urllib.parse
 from typing import List, Dict, Tuple
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 
 # Simple in-memory caches to avoid repeating network calls
 _SEARCH_CACHE: Dict[Tuple[str, int], Dict] = {}
 _URL_CACHE: Dict[Tuple[str, int], Dict] = {}
 
-def _ddg_search_html(q: str, k: int = 5) -> List[Dict[str, str]]:
+async def _ddg_search_html(q: str, k: int = 5) -> List[Dict[str, str]]:
     """Scrape DuckDuckGo's HTML results and return [{title,url,snippet}, ...]."""
     headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(
-        "https://duckduckgo.com/html/",
-        params={"q": q},
-        headers=headers,
-        timeout=20,
-    )
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(
+            "https://duckduckgo.com/html/",
+            params={"q": q},
+            headers=headers,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
     items = []
     for res in soup.select("div.result")[:k]:
         a = res.select_one("a.result__a")
@@ -45,12 +45,13 @@ def _ddg_search_html(q: str, k: int = 5) -> List[Dict[str, str]]:
 def _clean_text(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
-def _open_and_extract(url: str, max_chars: int = 6000) -> Dict[str, str]:
+async def _open_and_extract(url: str, max_chars: int = 6000) -> Dict[str, str]:
     """Fetch a URL and return {'title','url','text'} with trimmed, readable text."""
     headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers, timeout=25)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        r = await client.get(url, headers=headers)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     title = soup.title.get_text(strip=True) if soup.title else ""
@@ -65,18 +66,18 @@ def _open_and_extract(url: str, max_chars: int = 6000) -> Dict[str, str]:
         text = text[:max_chars] + " …"
     return {"title": title, "url": url, "text": text}
 
-def web_search(query: str, k: int = 5) -> Dict:
+async def web_search(query: str, k: int = 5) -> Dict:
     """Search the web for recent or factual info and return top results."""
     key = (query, k)
     if key not in _SEARCH_CACHE:
-        results = _ddg_search_html(query, k)
+        results = await _ddg_search_html(query, k)
         _SEARCH_CACHE[key] = {"results": results, "source": "duckduckgo_html"}
     return _SEARCH_CACHE[key]
 
-def open_url(url: str, max_chars: int = 6000) -> Dict:
+async def open_url(url: str, max_chars: int = 6000) -> Dict:
     """Open a URL and return a concise text extract for summarization."""
     key = (url, max_chars)
     if key not in _URL_CACHE:
-        page = _open_and_extract(url, max_chars=max_chars)
+        page = await _open_and_extract(url, max_chars=max_chars)
         _URL_CACHE[key] = {"page": page}
     return _URL_CACHE[key]

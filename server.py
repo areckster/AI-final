@@ -237,9 +237,9 @@ async def chat_stream(payload: Dict[str, Any]):
                     args = tc.get("function", {}).get("arguments") or {}
                     try:
                         if name == "web_search":
-                            payload = web_search(args.get("query", ""), int(args.get("k", 5)))
+                            payload = await web_search(args.get("query", ""), int(args.get("k", 5)))
                         elif name == "open_url":
-                            payload = open_url(args["url"], int(args.get("max_chars", 6000)))
+                            payload = await open_url(args["url"], int(args.get("max_chars", 6000)))
                         else:
                             payload = {"error": f"Unknown tool {name}"}
                     except Exception as e:
