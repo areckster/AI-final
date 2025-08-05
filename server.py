@@ -22,7 +22,8 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MODEL = os.getenv("MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:4b-q5_k_m")
 DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
-USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
+USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "8192"))
+CTX_MULTIPLIER = float(os.getenv("CTX_MULTIPLIER", "1.1"))
 
 # Global HTTP client managed via lifespan events
 http_client: httpx.AsyncClient | None = None
@@ -62,7 +63,7 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
     seed = settings.get("seed") or None
     num_predict = settings.get("num_predict") or None
 
-    dynamic_ctx = bool(settings.get("dynamic_ctx", True))
+    dynamic_ctx = bool(settings.get("dynamic_ctx", False))
     user_max_ctx = int(settings.get("max_ctx", USER_MAX_CTX))
     static_ctx = int(settings.get("num_ctx", DEFAULT_NUM_CTX))
 
@@ -70,7 +71,7 @@ def build_options(settings: Dict[str, Any], messages: List[Dict[str, Any]]) -> D
     est_tokens = estimate_tokens(joined)
 
     if dynamic_ctx:
-        num_ctx = clamp(int(est_tokens * 1.2), 4096, user_max_ctx)
+        num_ctx = clamp(int(est_tokens * CTX_MULTIPLIER), 4096, user_max_ctx)
     else:
         num_ctx = clamp(static_ctx, 2048, user_max_ctx)
 
