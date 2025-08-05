@@ -363,6 +363,7 @@
       <h3>Conversation</h3>
       <div class="toggle"><span>Dynamic Context</span><input id="dynamicCtx" type="checkbox" checked /></div>
       <div class="toggle"><span>Animated Background</span><input id="bgToggle" type="checkbox" checked /></div>
+      <div class="toggle"><span>Animate While Generating</span><input id="bgWhileGen" type="checkbox" /></div>
       <label for="bgQuality">Background Quality</label>
       <select id="bgQuality">
         <option value="1">Low</option>
@@ -451,6 +452,7 @@
     const modelsListEl = document.getElementById('modelsList');
 
     const bgToggleEl = document.getElementById('bgToggle');
+    const bgWhileGenEl = document.getElementById('bgWhileGen');
     const bgQualityEl = document.getElementById('bgQuality');
     const stageEl = document.getElementById('stage');
 
@@ -658,7 +660,7 @@
         let running = false;
         let raf = 0, timeout = 0;
         function loop(now){
-          if (!running || document.hidden || streaming) return;
+          if (!running || document.hidden || (streaming && !bgWhileGenEl.checked)) return;
           if(!last) last = now;
           const dt = Math.min(33, now-last) / 1000;
           last = now;
@@ -679,7 +681,7 @@
         if (!bgCtrl) initBackground();
         stageEl.style.display = 'block';
         document.body.classList.remove('static-bg');
-        if(bgCtrl && !document.hidden && !streaming) bgCtrl.start();
+        if(bgCtrl && !document.hidden && (!streaming || bgWhileGenEl.checked)) bgCtrl.start();
       }
       function disableBackground(){
         stageEl.style.display = 'none';
@@ -688,7 +690,7 @@
       }
 
       function saveBgPref(){
-        localStorage.setItem('bgPref', JSON.stringify({enabled:bgToggleEl.checked, quality:parseFloat(bgQualityEl.value)}));
+        localStorage.setItem('bgPref', JSON.stringify({enabled:bgToggleEl.checked, quality:parseFloat(bgQualityEl.value), duringGen:bgWhileGenEl.checked}));
       }
       function applyBgPref(){
         dpr = parseFloat(bgQualityEl.value);
@@ -699,14 +701,16 @@
       (function initBgPref(){
         const pref = JSON.parse(localStorage.getItem('bgPref') || '{}');
         if (pref.enabled === false) bgToggleEl.checked = false;
+        if (pref.duringGen) bgWhileGenEl.checked = true;
         if (pref.quality) { bgQualityEl.value = String(pref.quality); dpr = parseFloat(bgQualityEl.value); }
         applyBgPref();
       })();
       bgToggleEl.addEventListener('change', ()=>{ applyBgPref(); saveBgPref(); });
       bgQualityEl.addEventListener('change', ()=>{ applyBgPref(); saveBgPref(); });
+      bgWhileGenEl.addEventListener('change', ()=>{ saveBgPref(); if(streaming && bgCtrl){ if(bgWhileGenEl.checked) bgCtrl.start(); else bgCtrl.stop(); } });
       document.addEventListener('visibilitychange', ()=>{
         if(document.hidden){ if(bgCtrl) bgCtrl.stop(); }
-        else if(bgToggleEl.checked && bgCtrl) bgCtrl.start();
+        else if(bgToggleEl.checked && bgCtrl && (!streaming || bgWhileGenEl.checked)) bgCtrl.start();
       });
 
       // Telemetry
@@ -1073,7 +1077,7 @@
 
       // lock UI
       streaming = true; setButtonState('pause'); updateCtxHint();
-      if(bgCtrl) bgCtrl.stop();
+      if(bgCtrl && !bgWhileGenEl.checked) bgCtrl.stop();
       bgSpeed = bgActiveSpeed;
 
       const settings = {
@@ -1153,7 +1157,7 @@
       } finally {
         streaming = false; setButtonState('send');
         bgSpeed = bgIdleSpeed;
-        if(bgToggleEl.checked && !document.hidden && bgCtrl) bgCtrl.start();
+        if(bgToggleEl.checked && !document.hidden && bgCtrl && !bgWhileGenEl.checked) bgCtrl.start();
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
       }
