@@ -49,13 +49,13 @@
     }
     .bg{
       position:fixed;top:-50%;left:-50%;width:200%;height:200%;
-      pointer-events:none;z-index:-1;opacity:.2;
+      pointer-events:none;z-index:-1;opacity:.15;
+      background:conic-gradient(from 0deg, var(--accent-1), var(--accent-2), var(--accent-1));
       filter:blur(120px);
-      --bg-angle:0deg;
-      --bg-x:50%;
-      --bg-y:50%;
-      background:conic-gradient(from var(--bg-angle) at var(--bg-x) var(--bg-y), var(--accent-1), var(--accent-2), var(--accent-1));
+      animation:bg-spin 30s linear infinite;
+      animation-play-state:paused;
     }
+    @keyframes bg-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
     .shell{display:grid;grid-template-rows:auto 1fr;min-height:100%}
 
     /* Header */
@@ -257,6 +257,15 @@
     }
     @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
+    /* Jump to latest */
+    .jump{
+      position:sticky;right:24px;bottom:92px;z-index:50;
+      background:#0f1729;border:1px solid var(--border);backdrop-filter:blur(10px);
+      color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;
+      box-shadow:var(--shadow);font-size:13px;display:flex;align-items:center;gap:8px
+    }
+    .jump.hidden{display:none}
+
     /* Drawer + theme picker */
     .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s ease}
     .drawer{position:fixed;top:0;left:0;height:100%;width:420px;transform:translateX(-100%);transition:transform .25s ease;background:linear-gradient(180deg,var(--surface),var(--surface-2));border-right:1px solid var(--border);padding:16px;overflow-y:auto;box-shadow:var(--shadow)}
@@ -319,6 +328,8 @@
         <div id="chat" class="chat">
           <div id="messages" class="list"></div>
         </div>
+        <div id="jump" class="jump hidden" role="button" aria-label="Jump to latest">Jump to latest</div>
+
         <div class="composer">
           <div class="dock">
             <div class="left">
@@ -437,25 +448,13 @@
   <script>
     const chatEl = document.getElementById('chatWrap');
     const listEl = document.getElementById('messages');
+    const bottomSentinel = document.createElement('div');
+    listEl.appendChild(bottomSentinel);
 
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
     const sendIcon = document.getElementById('sendIcon');
     const bgEl = document.querySelector('.bg');
-    let bgAngle = 0, bgX = 0.5, bgY = 0.5;
-    const BG_SPEED_IDLE = { angle: 0.05, move: 0.0005 };
-    const BG_SPEED_ACTIVE = { angle: 0.15, move: 0.002 };
-    let bgSpeed = { ...BG_SPEED_IDLE };
-    function animateBg(){
-      bgAngle = (bgAngle + bgSpeed.angle) % 360;
-      bgX = Math.min(0.9, Math.max(0.1, bgX + (Math.random() - 0.5) * bgSpeed.move));
-      bgY = Math.min(0.9, Math.max(0.1, bgY + (Math.random() - 0.5) * bgSpeed.move));
-      bgEl.style.setProperty('--bg-angle', bgAngle + 'deg');
-      bgEl.style.setProperty('--bg-x', (bgX * 100) + '%');
-      bgEl.style.setProperty('--bg-y', (bgY * 100) + '%');
-      requestAnimationFrame(animateBg);
-    }
-    requestAnimationFrame(animateBg);
 
     const ctxHint = document.getElementById('ctxHint');
     const telemetryEl = document.getElementById('telemetry');
@@ -486,6 +485,7 @@
     const healthEl = document.getElementById('health');
 
     const attachmentsEl = document.getElementById('attachments');
+    const jumpBtn = document.getElementById('jump');
 
     const welcomeEl = document.getElementById('welcome');
     const welcomeTextEl = document.getElementById('welcomeText');
@@ -494,6 +494,7 @@
     let controller = null;
     let streaming = false;
     let attachments = [];
+    let follow = true;
 
     // Telemetry
     let startAt = 0;
@@ -607,6 +608,14 @@
     function autosize(){ promptEl.style.height='auto'; promptEl.style.height=Math.min(promptEl.scrollHeight,220)+'px'; }
     promptEl.addEventListener('input', autosize); window.addEventListener('load', autosize);
 
+    // Robust scroll control
+    chatEl.addEventListener('scroll', () => {
+      const atBottom = Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
+      follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
+    });
+    function scrollToBottomIfFollowing(){ if (!follow) return; requestAnimationFrame(()=>{ bottomSentinel.scrollIntoView({block:'end'}); }); }
+    jumpBtn.addEventListener('click', () => { follow = true; bottomSentinel.scrollIntoView({block:'end'}); jumpBtn.classList.add('hidden'); });
+
     // Health/model lists
     async function checkHealth(){
       try { const r = await fetch('/api/health'); const j = await r.json();
@@ -651,7 +660,7 @@
         actions.appendChild(copyBtn); msg.appendChild(actions);
       }
 
-      wrap.appendChild(msg); listEl.appendChild(wrap);
+      wrap.appendChild(msg); listEl.appendChild(wrap); listEl.appendChild(bottomSentinel); scrollToBottomIfFollowing();
       return {wrap, msg, body};
     }
 
@@ -718,6 +727,9 @@
         }
       });
 
+      // keep scroll inside card
+      panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); follow=false; jumpBtn.classList.remove('hidden'); }, {passive:false});
+
       return {
         pill, label, spinner, panel, pre, counter,
         start: performance.now(), stop: null,
@@ -734,6 +746,7 @@
       ctx.panel.classList.remove('open');
       ctx.pill.classList.remove('open');
       ctx.finished = true;
+      scrollToBottomIfFollowing();
     }
     function formatDuration(ms){
       const s = Math.round(ms/1000);
@@ -778,6 +791,7 @@
       bodyEl.innerHTML = renderMarkdown(nextRaw);
       lastOutTokenEstimate = estimateTokens(nextRaw);
       updateTelemetry();
+      scrollToBottomIfFollowing();
     }
 
     // Send/stream
@@ -811,10 +825,11 @@
 
       // thinking UI
       msgCtx.thinking = createThinkingUI(msgCtx.msg);
+      scrollToBottomIfFollowing();
 
       // lock UI
-      streaming = true; setButtonState('pause'); updateCtxHint();
-      bgSpeed = { ...BG_SPEED_ACTIVE };
+      streaming = true; follow = true; setButtonState('pause'); updateCtxHint();
+      bgEl.style.animationPlayState = 'running';
 
       const settings = {
         dynamic_ctx: dynamicCtxEl.checked,
@@ -884,6 +899,7 @@
               const raw = msgCtx.body.getAttribute('data-raw') || '';
               history.push({role:'assistant', content: raw});
               updateCtxHint();
+              scrollToBottomIfFollowing();
             }
           }
         }
@@ -891,9 +907,10 @@
         if (msgCtx) appendVisible(msgCtx, `\n\n**[error]** ${err}`);
       } finally {
         streaming = false; setButtonState('send');
-        bgSpeed = { ...BG_SPEED_IDLE };
+        bgEl.style.animationPlayState = 'paused';
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
+        scrollToBottomIfFollowing();
       }
     }
 
