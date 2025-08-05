@@ -49,13 +49,10 @@
     }
     .bg{
       position:fixed;top:-50%;left:-50%;width:200%;height:200%;
-      pointer-events:none;z-index:-1;opacity:.15;
-      background:conic-gradient(from 0deg, var(--accent-1), var(--accent-2), var(--accent-1));
+      pointer-events:none;z-index:-1;opacity:.3;
       filter:blur(120px);
-      animation:bg-spin 30s linear infinite;
-      animation-play-state:paused;
+      background:radial-gradient(circle at 50% 50%, var(--accent-1), transparent 70%);
     }
-    @keyframes bg-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
     .shell{display:grid;grid-template-rows:auto 1fr;min-height:100%}
 
     /* Header */
@@ -257,15 +254,6 @@
     }
     @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
-    /* Jump to latest */
-    .jump{
-      position:sticky;right:24px;bottom:92px;z-index:50;
-      background:#0f1729;border:1px solid var(--border);backdrop-filter:blur(10px);
-      color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;
-      box-shadow:var(--shadow);font-size:13px;display:flex;align-items:center;gap:8px
-    }
-    .jump.hidden{display:none}
-
     /* Drawer + theme picker */
     .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s ease}
     .drawer{position:fixed;top:0;left:0;height:100%;width:420px;transform:translateX(-100%);transition:transform .25s ease;background:linear-gradient(180deg,var(--surface),var(--surface-2));border-right:1px solid var(--border);padding:16px;overflow-y:auto;box-shadow:var(--shadow)}
@@ -328,8 +316,6 @@
         <div id="chat" class="chat">
           <div id="messages" class="list"></div>
         </div>
-        <div id="jump" class="jump hidden" role="button" aria-label="Jump to latest">Jump to latest</div>
-
         <div class="composer">
           <div class="dock">
             <div class="left">
@@ -448,8 +434,6 @@
   <script>
     const chatEl = document.getElementById('chatWrap');
     const listEl = document.getElementById('messages');
-    const bottomSentinel = document.createElement('div');
-    listEl.appendChild(bottomSentinel);
 
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
@@ -485,8 +469,6 @@
     const healthEl = document.getElementById('health');
 
     const attachmentsEl = document.getElementById('attachments');
-    const jumpBtn = document.getElementById('jump');
-
     const welcomeEl = document.getElementById('welcome');
     const welcomeTextEl = document.getElementById('welcomeText');
 
@@ -494,7 +476,20 @@
     let controller = null;
     let streaming = false;
     let attachments = [];
-    let follow = true;
+
+    // Animated background
+    let bgSpeed = 0.02;
+    let bx = 50, by = 50, tx = 50, ty = 50, hue = 0;
+    function animateBg(){
+      bx += (tx - bx) * bgSpeed;
+      by += (ty - by) * bgSpeed;
+      if (Math.abs(tx - bx) < 1) tx = Math.random() * 100;
+      if (Math.abs(ty - by) < 1) ty = Math.random() * 100;
+      hue = (hue + bgSpeed * 50) % 360;
+      bgEl.style.background = `radial-gradient(circle at ${bx}% ${by}%, hsl(${hue},80%,60%), transparent 70%)`;
+      requestAnimationFrame(animateBg);
+    }
+    animateBg();
 
     // Telemetry
     let startAt = 0;
@@ -609,12 +604,7 @@
     promptEl.addEventListener('input', autosize); window.addEventListener('load', autosize);
 
     // Robust scroll control
-    chatEl.addEventListener('scroll', () => {
-      const atBottom = Math.abs(chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 4;
-      follow = atBottom; jumpBtn.classList.toggle('hidden', atBottom);
-    });
-    function scrollToBottomIfFollowing(){ if (!follow) return; requestAnimationFrame(()=>{ bottomSentinel.scrollIntoView({block:'end'}); }); }
-    jumpBtn.addEventListener('click', () => { follow = true; bottomSentinel.scrollIntoView({block:'end'}); jumpBtn.classList.add('hidden'); });
+
 
     // Health/model lists
     async function checkHealth(){
@@ -660,7 +650,7 @@
         actions.appendChild(copyBtn); msg.appendChild(actions);
       }
 
-      wrap.appendChild(msg); listEl.appendChild(wrap); listEl.appendChild(bottomSentinel); scrollToBottomIfFollowing();
+      wrap.appendChild(msg); listEl.appendChild(wrap);
       return {wrap, msg, body};
     }
 
@@ -728,7 +718,7 @@
       });
 
       // keep scroll inside card
-      panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); follow=false; jumpBtn.classList.remove('hidden'); }, {passive:false});
+      panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); }, {passive:false});
 
       return {
         pill, label, spinner, panel, pre, counter,
@@ -746,7 +736,6 @@
       ctx.panel.classList.remove('open');
       ctx.pill.classList.remove('open');
       ctx.finished = true;
-      scrollToBottomIfFollowing();
     }
     function formatDuration(ms){
       const s = Math.round(ms/1000);
@@ -791,7 +780,6 @@
       bodyEl.innerHTML = renderMarkdown(nextRaw);
       lastOutTokenEstimate = estimateTokens(nextRaw);
       updateTelemetry();
-      scrollToBottomIfFollowing();
     }
 
     // Send/stream
@@ -825,11 +813,10 @@
 
       // thinking UI
       msgCtx.thinking = createThinkingUI(msgCtx.msg);
-      scrollToBottomIfFollowing();
 
       // lock UI
-      streaming = true; follow = true; setButtonState('pause'); updateCtxHint();
-      bgEl.style.animationPlayState = 'running';
+      streaming = true; setButtonState('pause'); updateCtxHint();
+      bgSpeed = 0.15;
 
       const settings = {
         dynamic_ctx: dynamicCtxEl.checked,
@@ -899,7 +886,6 @@
               const raw = msgCtx.body.getAttribute('data-raw') || '';
               history.push({role:'assistant', content: raw});
               updateCtxHint();
-              scrollToBottomIfFollowing();
             }
           }
         }
@@ -907,10 +893,9 @@
         if (msgCtx) appendVisible(msgCtx, `\n\n**[error]** ${err}`);
       } finally {
         streaming = false; setButtonState('send');
-        bgEl.style.animationPlayState = 'paused';
+        bgSpeed = 0.02;
         if (msgCtx?.thinking && !firstByteAt){ msgCtx.thinking.stop = performance.now(); finishThinkingUI(msgCtx.thinking); }
         msgCtx = null;
-        scrollToBottomIfFollowing();
       }
     }
 
