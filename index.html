@@ -128,7 +128,7 @@
       border-radius:999px;padding:4px 8px;font-size:12px;cursor:pointer
     }
 
-    /* Thinking pill + panel */
+    /* Thinking pill + reasoning card */
     .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px;padding-right:80px}
     .think-pill{
       position:relative;display:inline-flex;align-items:center;gap:8px;
@@ -136,7 +136,7 @@
       color:var(--text);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;
       overflow:hidden;flex-wrap:wrap;max-width:100%;min-width:0;
     }
-    .think-pill *, .think-panel *{user-select:none}
+    .think-pill *, .think-card *{user-select:none}
     .think-dot{width:6px;height:6px;border-radius:50%;
       background:radial-gradient(60% 120% at 30% 30%, var(--accent-1) 0%, var(--accent-2) 70%);
       box-shadow:0 0 16px rgba(125,211,252,.25);
@@ -144,20 +144,65 @@
     }
     @keyframes pulse{0%,100%{opacity:.6;transform:scale(.8);}50%{opacity:1;transform:scale(1);}}
     .think-muted{color:var(--muted)}
-    /* When open, dock pill to panel */
-    .think-pill.open{border-radius:8px 8px 0 0}
-    .think-panel{
-      display:none;margin-top:0;border:1px dashed #3a4054;border-radius:8px;background:#0b101b;
-      padding:10px 12px;max-height:280px;overflow:auto;
-      /* thoughts are not copiable */
-      user-select:none;
+    .think-tooltip{
+      position:absolute;
+      bottom:100%;
+      left:50%;
+      transform:translateX(-50%);
+      margin-bottom:6px;
+      border:1px solid var(--border);
+      background:var(--glass);
+      color:var(--text);
+      border-radius:999px;
+      padding:4px 12px;
+      font-size:11px;
+      white-space:nowrap;
+      opacity:0;
+      transition:opacity .12s ease;
+      pointer-events:none;
+      backdrop-filter:blur(8px);
+      z-index:20;
     }
-    .think-panel.open{
-      display:block;border-top:none;border-top-left-radius:0;border-top-right-radius:0;
-      margin-top:0;
+    .think-pill:hover .think-tooltip{opacity:1}
+    .think-card{
+      position:fixed;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:120px;
+      width:min(90%, var(--msg-max));
+      max-height:calc(100vh - 200px);
+      overflow:auto;
+      background:var(--glass);
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:16px;
+      backdrop-filter:blur(12px);
+      box-shadow:var(--shadow);
+      display:none;
+      z-index:200;
+    }
+    .think-card.open{
+      display:block;
+      animation:think-pop .25s ease;
+    }
+    @keyframes think-pop{
+      0%{transform:translateX(-50%) scale(.9);}
+      60%{transform:translateX(-50%) scale(1.05);}
+      100%{transform:translateX(-50%) scale(1);}
+    }
+    .think-card h2{
+      margin-top:0;margin-bottom:8px;
+      font-weight:600;
+      color:var(--accent-1);
+      font-size:14px;
     }
     .think-counter{font-size:12px;color:var(--muted);margin-bottom:6px}
-    .think-panel pre{display:none;margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px;user-select:none}
+    .think-card pre{
+      margin:0;
+      white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px;
+      line-height:1.5;
+    }
 
     /* Composer */
     .composer{
@@ -639,25 +684,25 @@
       const pill = document.createElement('div'); pill.className = 'think-pill';
       const spinner = document.createElement('span'); spinner.className='think-dot'; spinner.setAttribute('aria-hidden','true');
       const label = document.createElement('span'); label.textContent='Reasoning…';
-      pill.appendChild(spinner); pill.appendChild(label); tbar.appendChild(pill);
+      const tooltip = document.createElement('div'); tooltip.className='think-tooltip'; tooltip.textContent='View reasoning';
+      pill.appendChild(spinner); pill.appendChild(label); pill.appendChild(tooltip); tbar.appendChild(pill);
 
-      const panel = document.createElement('div'); panel.className='think-panel';
+      const panel = document.createElement('div'); panel.className='think-card';
+      const heading = document.createElement('h2'); heading.textContent='Reasoning';
       const counter = document.createElement('div'); counter.className='think-counter'; counter.textContent='tokens: 0';
       const pre = document.createElement('pre'); pre.textContent='';
-      panel.appendChild(counter); panel.appendChild(pre);
-      tbar.appendChild(panel);
+      panel.appendChild(heading); panel.appendChild(counter); panel.appendChild(pre);
+      document.body.appendChild(panel);
 
       // toggle panel
       pill.addEventListener('click', ()=>{
         const nowOpen = !panel.classList.contains('open');
         panel.classList.toggle('open', nowOpen);
         pill.classList.toggle('open', nowOpen);
-        scrollToBottomIfFollowing();
       });
 
-      // nested scroll handling; need non-passive wheel to forward
-      panel.addEventListener('wheel', (e)=>{ forwardScrollIfStuck(e, panel, chatEl); follow=false; jumpBtn.classList.remove('hidden'); }, {passive:false});
-      touchForwarder(panel, chatEl);
+      // keep scroll inside card
+      panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); follow=false; jumpBtn.classList.remove('hidden'); }, {passive:false});
 
       return {
         pill, label, spinner, panel, pre, counter,
