@@ -172,7 +172,7 @@
       width:min(90%, var(--msg-max));
       max-height:calc(100vh - 200px);
       overflow:auto;
-      background:var(--glass);
+      background:rgba(16,20,30,.45);
       color:var(--text);
       border:1px solid var(--border);
       border-radius:16px;
@@ -186,10 +186,14 @@
       display:block;
       animation:think-pop .25s ease;
     }
+    .think-card.closing{
+      display:block;
+      animation:think-pop .25s ease reverse forwards;
+    }
     @keyframes think-pop{
-      0%{transform:translateX(-50%) scale(.9);}
-      60%{transform:translateX(-50%) scale(1.05);}
-      100%{transform:translateX(-50%) scale(1);}
+      0%{transform:translateX(-50%) scale(.9); opacity:0;}
+      60%{transform:translateX(-50%) scale(1.05); opacity:1;}
+      100%{transform:translateX(-50%) scale(1); opacity:1;}
     }
     .think-card h2{
       margin-top:0;margin-bottom:8px;
@@ -695,10 +699,18 @@
       document.body.appendChild(panel);
 
       // toggle panel
-      pill.addEventListener('click', ()=>{
-        const nowOpen = !panel.classList.contains('open');
-        panel.classList.toggle('open', nowOpen);
-        pill.classList.toggle('open', nowOpen);
+      pill.addEventListener('click', () => {
+        if (pill.classList.contains('open')) {
+          panel.classList.remove('open');
+          panel.classList.add('closing');
+          pill.classList.remove('open');
+          panel.addEventListener('animationend', () => {
+            panel.classList.remove('closing');
+          }, {once:true});
+        } else {
+          panel.classList.add('open');
+          pill.classList.add('open');
+        }
       });
 
       // keep scroll inside card
