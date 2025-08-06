@@ -128,7 +128,14 @@
     }
 
     /* Thinking pill + reasoning card */
-    .thinking-bar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px;padding-right:80px}
+    .thinking-bar{
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      margin-bottom:10px;
+      padding-right:80px;
+    }
     .think-pill{
       position:relative;display:inline-flex;align-items:center;gap:8px;
       border:1px solid var(--border);background:#0f1729;
@@ -164,10 +171,11 @@
     }
     .think-pill:hover .think-tooltip{opacity:1}
     .think-card{
-      position:fixed;
-      left:50%;
-      transform:translateX(-50%);
-      width:min(80%, var(--msg-max));
+      position:absolute;
+      top:calc(100% + 8px);
+      left:0;
+      width:100%;
+      max-width:var(--msg-max);
       overflow:auto;
       background:rgba(16,20,30,.45);
       color:var(--text);
@@ -178,6 +186,7 @@
       box-shadow:var(--shadow);
       display:none;
       z-index:200;
+      transform-origin:top center;
     }
     .think-card.open{
       display:block;
@@ -188,9 +197,14 @@
       animation:think-pop .25s ease reverse forwards;
     }
     @keyframes think-pop{
-      0%{transform:translateX(-50%) scale(.9); opacity:0;}
-      60%{transform:translateX(-50%) scale(1.05); opacity:1;}
-      100%{transform:translateX(-50%) scale(1); opacity:1;}
+      0%{
+        transform:scaleY(.9) translateY(-10px);
+        opacity:0;
+      }
+      100%{
+        transform:scaleY(1) translateY(0);
+        opacity:1;
+      }
     }
     .think-card h2{
       margin-top:0;margin-bottom:8px;
