@@ -167,9 +167,7 @@
       position:fixed;
       left:50%;
       transform:translateX(-50%);
-      bottom:120px;
       width:min(80%, var(--msg-max));
-      max-height:calc(100vh - 200px);
       overflow:auto;
       background:rgba(16,20,30,.45);
       color:var(--text);
@@ -206,6 +204,11 @@
       white-space:pre-wrap;word-wrap:break-word;font-family:var(--mono);font-size:13px;
       line-height:1.5;
     }
+    .think-tools{margin-top:12px;display:flex;flex-direction:column;gap:12px}
+    .tool-section{border-top:1px solid var(--border);padding-top:12px;font-size:13px}
+    .search-pill{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#0f1729;color:var(--text);text-decoration:none;font-size:12px}
+    .tool-code{background:#0d111b;border:1px solid var(--border);border-radius:8px;padding:8px;overflow:auto;font-size:12px}
+    .tool-json{background:#0d111b;border:1px solid var(--border);border-radius:8px;padding:8px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}
 
     /* Composer */
     .composer{
@@ -975,7 +978,8 @@
       const heading = document.createElement('h2'); heading.textContent='Reasoning';
       const counter = document.createElement('div'); counter.className='think-counter'; counter.textContent='tokens: 0';
       const pre = document.createElement('pre'); pre.textContent='';
-      panel.appendChild(heading); panel.appendChild(counter); panel.appendChild(pre);
+      const tools = document.createElement('div'); tools.className='think-tools';
+      panel.appendChild(heading); panel.appendChild(counter); panel.appendChild(pre); panel.appendChild(tools);
       document.body.appendChild(panel);
 
       // toggle panel
@@ -989,6 +993,11 @@
             panel.classList.remove('closing');
           }, {once:true});
         }else{
+          const rect = pill.getBoundingClientRect();
+          const top = rect.top;
+          const maxHeight = Math.max(60, window.innerHeight - top - 120);
+          panel.style.top = `${top}px`;
+          panel.style.maxHeight = `${maxHeight}px`;
           panel.classList.remove('closing');
           void panel.offsetWidth;
           panel.classList.add('open');
@@ -1000,7 +1009,7 @@
       panel.addEventListener('wheel', (e)=>{ e.stopPropagation(); }, {passive:false});
 
       const ctx = {
-        pill, label, spinner, panel, pre, counter,
+        pill, label, spinner, panel, pre, counter, tools,
         start: performance.now(), stop: null,
         inThink:false, sawThinkOpen:false, sawThinkClose:false, finished:false,
         mode:'reason', searchTimer:null
@@ -1056,6 +1065,45 @@
         }
       }
       return out;
+    }
+
+    function renderToolResult(tctx, tr){
+      if (!tctx || !tr) return;
+      const {name, args, output} = tr;
+      const section = document.createElement('div');
+      section.className = 'tool-section';
+      const title = document.createElement('strong');
+      title.textContent = name;
+      title.style.display = 'block';
+      title.style.marginBottom = '6px';
+      section.appendChild(title);
+      if (name === 'web_search' && Array.isArray(output?.results)){
+        for (const r of output.results){
+          const a = document.createElement('a');
+          a.href = r.url;
+          a.target = '_blank';
+          a.textContent = r.title || r.url;
+          a.className = 'search-pill';
+          section.appendChild(a);
+        }
+      } else if (name === 'execute'){
+        if (args?.code){
+          const pre = document.createElement('pre');
+          pre.className = 'tool-code';
+          pre.innerHTML = hljs.highlight(args.code, {language:'python'}).value;
+          section.appendChild(pre);
+        }
+        const out = document.createElement('pre');
+        out.className = 'tool-json';
+        out.textContent = JSON.stringify(output, null, 2);
+        section.appendChild(out);
+      } else {
+        const block = document.createElement('pre');
+        block.className = 'tool-json';
+        block.textContent = JSON.stringify({args, output}, null, 2);
+        section.appendChild(block);
+      }
+      tctx.tools.appendChild(section);
     }
 
     function appendVisible(ctx, deltaVisible){
@@ -1168,7 +1216,6 @@
               if (tctx){
                 for (const tc of event.tool_calls || []){
                   const name = tc.function?.name || tc.name || 'tool';
-                  tctx.pre.textContent += `\n[tool] ${name}`;
                   tctx.setMode(name);
                   if (name === 'web_search'){
                     if (tctx.searchTimer) clearTimeout(tctx.searchTimer);
@@ -1179,6 +1226,10 @@
                 }
                 if (tctx.counter) tctx.counter.textContent = `tokens: ${estimateTokens(tctx.pre.textContent)}`;
               }
+            }
+            else if (event.type === 'tool_result'){
+              const tctx = msgCtx.thinking;
+              if (tctx) renderToolResult(tctx, event);
             }
             else if (event.type === 'error'){
               appendVisible(msgCtx, `\n\n**[error]** ${event.message}`);

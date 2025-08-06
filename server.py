@@ -461,6 +461,7 @@ async def chat_stream(payload: Dict[str, Any]):
                     call_id = tc.get("id")
                     name = tc.get("function", {}).get("name")
                     args_raw = tc.get("function", {}).get("arguments") or {}
+                    args = {}
                     try:
                         args = orjson.loads(args_raw) if isinstance(args_raw, str) else args_raw
                         if name == "web_search":
@@ -499,6 +500,13 @@ async def chat_stream(payload: Dict[str, Any]):
                             payload = {"error": f"Unknown tool {name}"}
                     except Exception as e:
                         payload = {"error": f"{type(e).__name__}: {e}"}
+                    yield DATA + orjson.dumps({
+                        "type": "tool_result",
+                        "id": call_id,
+                        "name": name,
+                        "args": args,
+                        "output": payload,
+                    }) + END
                     convo.append({
                         "role": "tool",
                         "tool_call_id": call_id,
