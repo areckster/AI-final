@@ -1,11 +1,3 @@
-
-# server.py
-# FastAPI backend for a sleek, streaming chat UI that talks to Ollama.
-# Usage:
-#   1) pip install -r requirements.txt
-#   2) bash start.sh
-#   3) http://localhost:8000
-
 import os
 import math
 from typing import Any, Dict, List
@@ -26,12 +18,16 @@ MODEL = os.getenv("MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:4b-q5_k_m")
 DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
 USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
 
+# Tool definitions: encourage follow-up opens after search
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the web for recent or factual info and return top results.",
+            "description": (
+                "Search the web for recent or factual info and return top results. "
+                "After identifying relevant URLs, the assistant should invoke open_url to fetch and summarize page contents."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -52,7 +48,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "open_url",
-            "description": "Open a URL and return a concise text extract for summarization.",
+            "description": (
+                "Open a URL and return a concise text extract for summarization. "
+                "Typically used after web_search identifies relevant links."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -68,6 +67,7 @@ TOOLS = [
         },
     },
 ]
+
 
 app = FastAPI(title="Ollama Chat UI")
 
