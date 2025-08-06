@@ -944,6 +944,24 @@
     }
 
     // Thinking UI
+    const TOOL_LABELS = {
+      reason: 'Reasoning…',
+      web_search: 'Searching…',
+      open_url: 'Fetching page…',
+      eval_expr: 'Evaluating…',
+      execute: 'Running code…',
+      read_file: 'Reading file…',
+      write_file: 'Writing file…',
+      terminal_open: 'Using terminal…',
+      terminal_run: 'Using terminal…',
+      terminal_terminate: 'Using terminal…',
+      notes_write: 'Updating notes…',
+      notes_list: 'Referring to notes…',
+      notes_read: 'Referring to notes…',
+      user_prefs_write: 'Updating preferences…',
+      user_prefs_list: 'Reading preferences…',
+      user_prefs_read: 'Reading preferences…',
+    };
     function createThinkingUI(msgEl){
       const tbar = msgEl.querySelector('.thinking-bar');
       tbar.innerHTML = '';
@@ -985,11 +1003,12 @@
         pill, label, spinner, panel, pre, counter,
         start: performance.now(), stop: null,
         inThink:false, sawThinkOpen:false, sawThinkClose:false, finished:false,
-        mode:'reason'
+        mode:'reason', searchTimer:null
       };
       ctx.setMode = (m) => {
         ctx.mode = m;
-        ctx.label.textContent = m === 'search' ? 'Searching…' : 'Reasoning…';
+        ctx.label.textContent = TOOL_LABELS[m] || TOOL_LABELS.reason;
+        if (m === 'reason' && ctx.searchTimer){ clearTimeout(ctx.searchTimer); ctx.searchTimer=null; }
       };
       return ctx;
     }
@@ -1123,7 +1142,7 @@
             let event; try{ event = JSON.parse(payload); } catch { continue; }
 
             if (event.type === 'delta'){
-              if (msgCtx?.thinking?.mode === 'search') msgCtx.thinking.setMode('reason');
+              if (msgCtx?.thinking && msgCtx.thinking.mode !== 'reason' && msgCtx.thinking.mode !== 'web_search') msgCtx.thinking.setMode('reason');
               if (!gotFirstDelta){
                 gotFirstDelta = true;
                 firstByteAt = performance.now();
@@ -1147,10 +1166,16 @@
             else if (event.type === 'tool_calls'){
               const tctx = msgCtx.thinking;
               if (tctx){
-                tctx.setMode('search');
                 for (const tc of event.tool_calls || []){
                   const name = tc.function?.name || tc.name || 'tool';
                   tctx.pre.textContent += `\n[tool] ${name}`;
+                  tctx.setMode(name);
+                  if (name === 'web_search'){
+                    if (tctx.searchTimer) clearTimeout(tctx.searchTimer);
+                    tctx.searchTimer = setTimeout(()=>{
+                      if (tctx.mode === 'web_search') tctx.setMode('reason');
+                    }, 2000);
+                  }
                 }
                 if (tctx.counter) tctx.counter.textContent = `tokens: ${estimateTokens(tctx.pre.textContent)}`;
               }
