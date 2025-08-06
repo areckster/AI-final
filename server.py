@@ -18,6 +18,17 @@ MODEL = os.getenv("MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:4b-q5_k_m")
 DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
 USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
 
+# Default developer instruction to make tool availability explicit
+DEFAULT_DEVELOPER_PROMPT = (
+    "You have two tools available: `web_search` for retrieving up-to-date or factual "
+    "information, and `open_url` for fetching and summarizing the contents of URLs. "
+    "When a question might require current information, call `web_search` instead of "
+    "saying you can't browse the internet. After obtaining search results, open "
+    "relevant links using `open_url` to gather details. Never state you can't browse "
+    "the internet; always attempt a web search when information could be outdated or "
+    "unknown."
+)
+
 # Tool definitions: encourage follow-up opens after search
 TOOLS = [
     {
@@ -167,9 +178,15 @@ async def chat_stream(payload: Dict[str, Any]):
     messages = payload.get("messages", [])
     settings = payload.get("settings", {})
     system_prompt = payload.get("system") or None
+    developer_prompt = payload.get("developer") or DEFAULT_DEVELOPER_PROMPT
 
+    initial_msgs: List[Dict[str, Any]] = []
     if system_prompt:
-        messages = [{"role": "system", "content": system_prompt}] + messages
+        initial_msgs.append({"role": "system", "content": system_prompt})
+    if developer_prompt:
+        initial_msgs.append({"role": "developer", "content": developer_prompt})
+
+    messages = initial_msgs + messages
 
     async def event_gen():
         DATA = b"data: "
