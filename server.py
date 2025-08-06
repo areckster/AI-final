@@ -381,14 +381,22 @@ async def health():
 async def chat_stream(payload: Dict[str, Any]):
     messages = payload.get("messages", [])
     settings = payload.get("settings", {})
-    system_prompt = payload.get("system") or None
+    system_prompt = payload.get("system", "")
     developer_prompt = payload.get("developer") or DEFAULT_DEVELOPER_PROMPT
 
-    initial_msgs: List[Dict[str, Any]] = []
+    combined_prompt_parts: List[str] = []
     if system_prompt:
-        initial_msgs.append({"role": "system", "content": system_prompt})
+        combined_prompt_parts.append(system_prompt.strip())
     if developer_prompt:
-        initial_msgs.append({"role": "developer", "content": developer_prompt})
+        combined_prompt_parts.append(
+            "Developer Instructions:\n" + developer_prompt.strip()
+        )
+
+    combined_prompt = "\n\n".join(combined_prompt_parts)
+
+    initial_msgs: List[Dict[str, Any]] = []
+    if combined_prompt:
+        initial_msgs.append({"role": "system", "content": combined_prompt})
 
     messages = initial_msgs + messages
 
