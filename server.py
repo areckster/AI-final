@@ -8,7 +8,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
-from tools import web_search, open_url
+from tools import (
+    web_search,
+    open_url,
+    eval_expr,
+    execute,
+    read_file,
+    write_file,
+    terminal_open,
+    terminal_run,
+    terminal_terminate,
+    notes_write,
+    notes_list,
+    notes_read,
+    user_prefs_write,
+    user_prefs_list,
+    user_prefs_read,
+)
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,13 +36,13 @@ USER_MAX_CTX = int(os.getenv("USER_MAX_CTX", "40000"))
 
 # Default developer instruction to make tool availability explicit
 DEFAULT_DEVELOPER_PROMPT = (
-    "You have two tools available: `web_search` for retrieving up-to-date or factual "
-    "information, and `open_url` for fetching and summarizing the contents of URLs. "
-    "When a question might require current information, call `web_search` instead of "
-    "saying you can't browse the internet. After obtaining search results, open "
-    "relevant links using `open_url` to gather details. Never state you can't browse "
-    "the internet; always attempt a web search when information could be outdated or "
-    "unknown."
+    "You have multiple tools available: `web_search` for retrieving up-to-date "
+    "information, `open_url` for fetching and summarizing web pages, `eval_expr` to "
+    "evaluate a Python expression, `execute` to run Python code, `read_file` and "
+    "`write_file` for file operations, terminal controls (`terminal_open`, "
+    "`terminal_run`, `terminal_terminate`), note management (`notes_write`, "
+    "`notes_list`, `notes_read`), and user preference storage (`user_prefs_write`, "
+    "`user_prefs_list`, `user_prefs_read`). Invoke these tools when they can help."
 )
 
 # Tool definitions: encourage follow-up opens after search
@@ -74,6 +90,167 @@ TOOLS = [
                     },
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eval_expr",
+            "description": "Evaluate a Python expression and return the result.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expr": {"type": "string", "description": "Expression to evaluate"}
+                },
+                "required": ["expr"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute",
+            "description": "Run a Python code snippet and capture stdout/stderr.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Code to run"}
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a text file and return its contents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the file"}
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Write text to a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the file"},
+                    "contents": {"type": "string", "description": "Text to write"}
+                },
+                "required": ["path", "contents"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminal_open",
+            "description": "Open a terminal session.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminal_run",
+            "description": "Run a shell command in the terminal session.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string", "description": "Command to run"}
+                },
+                "required": ["cmd"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminal_terminate",
+            "description": "Terminate the terminal session.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notes_write",
+            "description": "Store a note in memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Note identifier"},
+                    "content": {"type": "string", "description": "Note content"}
+                },
+                "required": ["key", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notes_list",
+            "description": "List all stored note keys.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notes_read",
+            "description": "Read a note by key.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Note identifier"}
+                },
+                "required": ["key"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "user_prefs_write",
+            "description": "Store a user preference value.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Preference key"},
+                    "content": {"type": "string", "description": "Preference value"}
+                },
+                "required": ["key", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "user_prefs_list",
+            "description": "List stored user preference keys.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "user_prefs_read",
+            "description": "Read a stored user preference value.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Preference key"}
+                },
+                "required": ["key"],
             },
         },
     },
@@ -262,6 +439,32 @@ async def chat_stream(payload: Dict[str, Any]):
                                 payload = {"error": f"Search failed: {payload['error']}"}
                         elif name == "open_url":
                             payload = await open_url(args["url"], int(args.get("max_chars", 6000)))
+                        elif name == "eval_expr":
+                            payload = await eval_expr(args.get("expr", ""))
+                        elif name == "execute":
+                            payload = await execute(args.get("code", ""))
+                        elif name == "read_file":
+                            payload = await read_file(args.get("path", ""))
+                        elif name == "write_file":
+                            payload = await write_file(args.get("path", ""), args.get("contents", ""))
+                        elif name == "terminal_open":
+                            payload = await terminal_open()
+                        elif name == "terminal_run":
+                            payload = await terminal_run(args.get("cmd", ""))
+                        elif name == "terminal_terminate":
+                            payload = await terminal_terminate()
+                        elif name == "notes_write":
+                            payload = await notes_write(args.get("key", ""), args.get("content", ""))
+                        elif name == "notes_list":
+                            payload = await notes_list()
+                        elif name == "notes_read":
+                            payload = await notes_read(args.get("key", ""))
+                        elif name == "user_prefs_write":
+                            payload = await user_prefs_write(args.get("key", ""), args.get("content", ""))
+                        elif name == "user_prefs_list":
+                            payload = await user_prefs_list()
+                        elif name == "user_prefs_read":
+                            payload = await user_prefs_read(args.get("key", ""))
                         else:
                             payload = {"error": f"Unknown tool {name}"}
                     except Exception as e:
